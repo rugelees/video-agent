@@ -373,3 +373,76 @@ def test_xai_client_missing_key(monkeypatch):
     import os
     with pytest.raises(RuntimeError, match="XAI_API_KEY"):
         va.xai_client()
+
+
+def _mean_volume_db(path):
+    p = subprocess.run(["ffmpeg", "-i", path, "-af", "volumedetect", "-vn", "-f", "null", "-"],
+                       capture_output=True, text=True)
+    for line in p.stderr.splitlines():
+        if "mean_volume" in line:
+            return float(line.split("mean_volume:")[1].split("dB")[0])
+    raise AssertionError("no mean_volume in ffmpeg output")
+
+
+def _frame_px(path, t, x, y):
+    raw = subprocess.run(
+        ["ffmpeg", "-v", "error", "-ss", str(t), "-i", path, "-frames:v", "1",
+         "-vf", f"crop=1:1:{x}:{y},format=rgb24", "-f", "rawvideo", "-"],
+        capture_output=True).stdout
+    return tuple(raw[:3])
+
+
+@pytest.mark.parametrize("fit", ["pad", "cover", "blur"])
+def test_edl_fit_fills_portrait_canvas(test_mp4, tmp_path, fit):
+    edit = {"fps": 30, "width": 180, "height": 320,
+            "clips": [{"src": test_mp4, "start": 0.0, "end": 1.0, "fit": fit, "focus": 0.3,
+                       "rationale": "landscape source on a portrait canvas"}]}
+    ep = tmp_path / "fit.json"
+    ep.write_text(json.dumps(edit))
+    out = str(tmp_path / f"fit_{fit}.mp4")
+    va.edl_render(str(ep), out)
+    info = va.video_info(out)
+    assert (info["width"], info["height"]) == (180, 320)
+    top = _frame_px(out, 0.3, 90, 4)
+    if fit == "pad":
+        assert max(top) < 20                    # black bar
+    else:
+        assert max(top) > 25                    # picture or blurred copy reaches the edge
+
+
+def test_edl_gain_db_mutes_one_clip(av_mp4, tmp_path):
+    def render(gain):
+        clip = {"src": av_mp4, "start": 0.0, "end": 3.0, "rationale": "tone"}
+        if gain is not None:
+            clip["gain_db"] = gain
+        ep = tmp_path / f"g{gain}.json"
+        ep.write_text(json.dumps({"fps": 30, "width": 320, "height": 240, "clips": [clip]}))
+        out = str(tmp_path / f"g{gain}.mp4")
+        va.edl_render(str(ep), out)
+        return out
+    loud, quiet, muted = render(None), render(-12), render(-120)
+    assert _mean_volume_db(quiet) < _mean_volume_db(loud) - 9
+    assert _mean_volume_db(muted) < -60
+
+
+def test_edl_texts_overlay_and_vfade(test_mp4, tmp_path):
+    edit = {"fps": 30, "width": 320, "height": 240,
+            "texts": [{"text": "HOLA", "start": 0.5, "end": 2.5, "size": 90, "y": 0.35,
+                       "fade": 0.2, "shadow": 0}],
+            "clips": [{"src": test_mp4, "start": 0.0, "end": 3.0, "vfade_in": 0.3,
+                       "rationale": "title over a clip that fades in"}]}
+    ep = tmp_path / "txt.json"
+    ep.write_text(json.dumps(edit))
+    out = str(tmp_path / "txt.mp4")
+    va.edl_render(str(ep), out)
+    assert abs(va.video_info(out)["duration"] - 3.0) < 0.2
+
+    def white_px(t):
+        raw = subprocess.run(
+            ["ffmpeg", "-v", "error", "-ss", str(t), "-i", out, "-frames:v", "1",
+             "-vf", "format=gray", "-f", "rawvideo", "-"], capture_output=True).stdout
+        return sum(1 for b in raw if b > 240)
+    assert white_px(1.5) > white_px(0.1) + 100      # title visible mid-window, absent at start
+    assert white_px(2.9) < white_px(1.5)            # gone after the window
+    dark = _frame_px(out, 0.0, 5, 5)
+    assert max(dark) < 30                           # vfade_in starts from black

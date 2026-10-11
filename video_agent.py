@@ -1094,26 +1094,52 @@ _VFX_BACKENDS = {"grok": grok_edit}
 # ---------------------------------------------------------------------------
 
 # Normalize every segment to a common geometry so concat never desyncs / errors.
-def _edl_vchain(W, H, fps, punch=None, nframes=None):
+def _edl_vchain(W, H, fps, punch=None, nframes=None, fit=None, focus=0.5, tag=0,
+                fade_in=0.0, fade_out=0.0):
     """Video filter chain for one EDL segment.
 
+    `fit` decides how a source whose shape differs from W×H is placed on the canvas:
+      None/"pad"  scale-to-fit + black bars (default)
+      "cover"     scale-to-fill + crop; `focus` (0..1, or [x, y]) picks which part survives
+      "blur"      whole frame, centred, over a blurred enlargement of itself (no bars)
     `punch` is an optional (z_start, z_end) slow push (see `punch` in the EDL schema).
     The pre-scale to 2×  is what keeps zoompan smooth: zoompan rounds its crop origin to
     whole pixels, so pushing directly on a W×H frame visibly stair-steps.
+    `fade_in`/`fade_out` are dip-to-black fades in seconds, at the head/tail of the segment.
     """
-    chain = (f"setpts=PTS-STARTPTS,fps={fps},"
-             f"scale={W}:{H}:force_original_aspect_ratio=decrease,"
-             f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2,setsar=1")
+    head = f"setpts=PTS-STARTPTS,fps={fps}"
+    if fit == "cover":
+        fx, fy = (focus, 0.5) if isinstance(focus, (int, float)) else focus
+        chain = (f"{head},scale={W}:{H}:force_original_aspect_ratio=increase,"
+                 f"crop={W}:{H}:(iw-{W})*{float(fx):.4f}:(ih-{H})*{float(fy):.4f},setsar=1")
+    elif fit == "blur":
+        bw, bh = max(2, W // 4), max(2, H // 4)
+        chain = (f"{head},split=2[bg{tag}][fg{tag}];"
+                 f"[bg{tag}]scale={bw}:{bh}:force_original_aspect_ratio=increase,"
+                 f"crop={bw}:{bh},boxblur=5:2,scale={W}:{H},"
+                 f"colorchannelmixer=rr=0.7:gg=0.7:bb=0.7[bgb{tag}];"
+                 f"[fg{tag}]scale={W}:{H}:force_original_aspect_ratio=decrease[fgs{tag}];"
+                 f"[bgb{tag}][fgs{tag}]overlay=(W-w)/2:(H-h)/2,setsar=1")
+    else:
+        chain = (f"{head},scale={W}:{H}:force_original_aspect_ratio=decrease,"
+                 f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2,setsar=1")
     if punch:
         z0, z1 = punch
         n = max(1, int(nframes or 1))
         chain += (f",scale={W*2}:{H*2},"
                   f"zoompan=z='{z0:.6f}+({z1:.6f}-{z0:.6f})*min(on/{n},1)':d=1:"
                   f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={W}x{H}:fps={fps}")
-    return chain + ",format=yuv420p"
+    chain += ",format=yuv420p"
+    dur = (nframes or 0) / fps
+    if fade_in and dur > 0:
+        chain += f",fade=t=in:st=0:d={min(float(fade_in), dur):.3f}"
+    if fade_out and dur > 0:
+        d = min(float(fade_out), dur)
+        chain += f",fade=t=out:st={dur - d:.3f}:d={d:.3f}"
+    return chain
 
 
-def _edl_achain(a_s, a_e, seam_fade, fade_in, fade_out):
+def _edl_achain(a_s, a_e, seam_fade, fade_in, fade_out, gain_db=0.0, afilter=None):
     """Audio filter chain for one EDL segment, with short fades at the internal seams.
 
     Butt-splicing two audio segments mid-waveform steps the signal discontinuously and
@@ -1127,8 +1153,115 @@ def _edl_achain(a_s, a_e, seam_fade, fade_in, fade_out):
             parts.append(f"afade=t=in:st=0:d={seam_fade:.4f}")
         if fade_out:
             parts.append(f"afade=t=out:st={dur - seam_fade:.4f}:d={seam_fade:.4f}")
+    if afilter:
+        parts.append(afilter)
+    if gain_db is not None and float(gain_db) <= -80:
+        parts.append("volume=0")
+    elif gain_db:
+        parts.append(f"volume={float(gain_db):.2f}dB")
     parts.append("aformat=channel_layouts=stereo:sample_rates=48000")
     return ",".join(parts)
+
+
+_FONT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "fonts")
+_FONT_FILES = {
+    "montserrat": "Montserrat[wght].ttf",
+    "playfair": "PlayfairDisplay[wght].ttf",
+    "playfair-italic": "PlayfairDisplay-Italic[wght].ttf",
+}
+
+
+def _load_font(name: str, size: int, weight: str = "Regular"):
+    from PIL import ImageFont
+    path = os.path.join(_FONT_DIR, _FONT_FILES.get(name, name))
+    try:
+        font = ImageFont.truetype(path, size)
+    except OSError:
+        return ImageFont.load_default(size=size)
+    try:
+        names = [n.decode() for n in font.get_variation_names()]
+        want = weight if weight in names else (f"{weight} Italic" if f"{weight} Italic" in names else None)
+        if want:
+            font.set_variation_by_name(want)
+    except Exception:
+        pass
+    return font
+
+
+def _tracked_width(font, text: str, tracking: float) -> float:
+    if not tracking:
+        return font.getlength(text)
+    return sum(font.getlength(ch) + tracking for ch in text) - tracking
+
+
+def _draw_tracked(draw, x: float, y: float, text: str, font, fill, tracking: float):
+    if not tracking:
+        draw.text((x, y), text, font=font, fill=fill)
+        return
+    for ch in text:
+        draw.text((x, y), ch, font=font, fill=fill)
+        x += font.getlength(ch) + tracking
+
+
+def _edl_text_png(spec: dict, W: int, H: int, path: str):
+    """Render one EDL `texts` entry to a full-frame RGBA PNG (soft drop shadow, no box).
+
+    spec: text (str, "\n" = line break), sub (optional second line), font/weight/size,
+    sub_font/sub_weight/sub_size, tracking/sub_tracking (letter spacing px), color,
+    align (center|left|right), x (px; default = centred / side margin), y (px, or a
+    fraction of H), shadow (0..1 opacity). Sizes are for the EDL's own canvas; the caller
+    rescales the PNG if the render is a draft.
+    """
+    from PIL import Image, ImageDraw, ImageFilter
+    size = int(spec.get("size", 96))
+    font = _load_font(spec.get("font", "montserrat"), size, spec.get("weight", "SemiBold"))
+    tracking = float(spec.get("tracking", 0))
+    color = spec.get("color", "#ffffff")
+    lines = [(ln, font, tracking, size) for ln in str(spec["text"]).split("\n")]
+    if spec.get("sub"):
+        ss = int(spec.get("sub_size", max(24, size // 3)))
+        sf = _load_font(spec.get("sub_font", "montserrat"), ss, spec.get("sub_weight", "Medium"))
+        lines.append((str(spec["sub"]), sf, float(spec.get("sub_tracking", tracking)), ss))
+    gap = float(spec.get("line_gap", 0.35))
+    widths = [_tracked_width(f, t, tr) for t, f, tr, _ in lines]
+    block_w = max(widths)
+    heights = [sz * (1 + gap) for *_, sz in lines]
+    block_h = sum(heights) - lines[-1][3] * gap
+
+    align = spec.get("align", "center")
+    margin = int(W * 0.08)
+    if "x" in spec:
+        bx = float(spec["x"])
+    elif align == "left":
+        bx = margin
+    elif align == "right":
+        bx = W - margin - block_w
+    else:
+        bx = (W - block_w) / 2
+    y = spec.get("y", 0.3)
+    by = float(y) * H if isinstance(y, float) and y <= 1.0 else float(y)
+
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    cy = by
+    for (t, f, tr, sz), w, h in zip(lines, widths, heights):
+        if align == "center" and "x" not in spec:
+            lx = bx + (block_w - w) / 2
+        elif align == "right" and "x" not in spec:
+            lx = bx + (block_w - w)
+        else:
+            lx = bx
+        _draw_tracked(d, lx, cy, t, f, color, tr)
+        cy += h
+    shadow = float(spec.get("shadow", 0.55))
+    if shadow > 0:
+        alpha = layer.split()[3]
+        blur = alpha.filter(ImageFilter.GaussianBlur(max(2, size * 0.05)))
+        sh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        sh.putalpha(blur.point(lambda v: min(255, int(v * shadow * 1.6))))
+        sh = Image.alpha_composite(sh, sh)
+        layer = Image.alpha_composite(sh, layer)
+    layer.save(path)
 
 
 def _edl_audio_windows(clips):
@@ -1215,6 +1348,9 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
         "audio_fix": "loudnorm=I=-14:TP=-1.5:LRA=11",# optional filter chain on the speech bus
         "seam_fade": 0.015,                          # optional click-killing fade at each cut
         "vbitrate": "9M",                            # optional; raise for 4K/screencast text
+        "crf": 16, "preset": "slow", "maxrate": "20M",  # optional; libx264 quality mode (replaces vbitrate)
+        "texts": [{"text": "CARTAGENA", "sub": "Día 1", "start": 1.0, "end": 5.0,
+                   "font": "playfair", "size": 150, "y": 0.3}],  # optional titles, OUTPUT timeline
         "music": {"src": "bed.mp3", "gain_db": -18, "duck": true,
                   "start": 0.0, "fade_in": 0.5, "fade_out": 2.0},   # optional music bed
         "clips": [
@@ -1223,6 +1359,9 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
           # split edit — this clip's sound arrives 0.4s before its picture (J-cut):
           {"src": "b.mp4", "start": 12.0, "end": 20.0, "audio_lead": 0.4,
            "punch": [1.0, 1.06],                      # optional slow push over the clip
+           "fit": "blur", "focus": 0.5,               # optional: pad (default) | cover | blur
+           "gain_db": -20, "afilter": "highpass=f=150",  # optional per-clip sound level / filter
+           "vfade_in": 0.4, "vfade_out": 0.4,         # optional dip-to-black at head / tail
            "rationale": "answer starts under the end of the question"},
           # multicam cutaway — audio from src, picture from a second camera:
           {"src": "a.mp4", "start": 70.0, "end": 78.0,
@@ -1321,7 +1460,9 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
             punch = (1.0, float(punch)) if isinstance(punch, (int, float)) else \
                     (float(punch[0]), float(punch[1]))
         vchain = _edl_vchain(W, H, fps, punch=punch,
-                             nframes=round((v_e - v_s) * fps))
+                             nframes=round((v_e - v_s) * fps),
+                             fit=c.get("fit"), focus=c.get("focus", 0.5), tag=i,
+                             fade_in=c.get("vfade_in", 0.0), fade_out=c.get("vfade_out", 0.0))
         # Nudge the out-point a quarter-frame inside: `trim` compares t < end in floating
         # point, so a frame sitting exactly on a quantized boundary is sometimes admitted
         # and sometimes not, leaving the picture a frame longer than the sound.
@@ -1331,7 +1472,8 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
         if ap not in audio_cache:
             audio_cache[ap] = _has_audio(a_src)
         achain = _edl_achain(a_s, a_e, seam_fade,
-                             fade_in=i > 0, fade_out=i < n - 1)
+                             fade_in=i > 0, fade_out=i < n - 1,
+                             gain_db=c.get("gain_db", 0.0), afilter=c.get("afilter"))
         if audio_cache[ap]:
             parts.append(f"[{ai}:a]{achain}[a{i}]")
         else:  # silent source (e.g. a title card) → synthesize silence of the clip's length
@@ -1355,6 +1497,21 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
         else:
             graph += f";[vc0]lut3d={lut}[vc]"
         vmap = "[vc]"
+    texts = edl.get("texts") or []
+    text_pngs = []
+    for k, t in enumerate(texts):
+        s0, e0 = float(t["start"]), float(t["end"])
+        fd = min(float(t.get("fade", 0.5)), (e0 - s0) / 2)
+        png = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        png.close()
+        _edl_text_png(t, edl.get("width", 1920), edl.get("height", 1080), png.name)
+        text_pngs.append((png.name, s0, e0))
+        scale = f",scale={W}:{H}" if draft else ""
+        graph += (f";[__TXT{k}__:v]format=rgba{scale},"
+                  f"fade=t=in:st={s0:.3f}:d={fd:.3f}:alpha=1,"
+                  f"fade=t=out:st={e0 - fd:.3f}:d={fd:.3f}:alpha=1[tx{k}]"
+                  f";{vmap}[tx{k}]overlay=0:0:eof_action=pass,format=yuv420p[vt{k}]")
+        vmap = f"[vt{k}]"
     if edl.get("audio_fix"):
         graph += f";[ac0]{edl['audio_fix']}[acf]"; amap = "[acf]"
 
@@ -1386,6 +1543,9 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
     sil_idx = len(inputs)
     mus_idx = sil_idx + (1 if need_silence else 0)
     graph = graph.replace("__SIL__", str(sil_idx)).replace("__MUS__", str(mus_idx))
+    txt_base = mus_idx + (1 if music else 0)
+    for k in range(len(text_pngs)):
+        graph = graph.replace(f"__TXT{k}__", str(txt_base + k))
 
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
         f.write(graph + "\n")
@@ -1399,12 +1559,26 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
         if music:
             # Loop the bed so a short track still covers the whole cut.
             cmd += ["-stream_loop", "-1", "-i", music["src"]]
+        for png, s0, e0 in text_pngs:
+            cmd += ["-loop", "1", "-framerate", str(fps), "-itsoffset", f"{s0:.3f}",
+                    "-t", f"{e0 - s0:.3f}", "-i", png]
+        if VCODEC == "libx264" and "crf" in edl and not draft:
+            venc = ["-c:v", "libx264", "-preset", str(edl.get("preset", "slow")),
+                    "-crf", str(edl["crf"]), "-pix_fmt", "yuv420p",
+                    "-colorspace", "bt709", "-color_primaries", "bt709",
+                    "-color_trc", "bt709", "-color_range", "tv"]
+            if edl.get("maxrate"):
+                venc += ["-maxrate", str(edl["maxrate"]), "-bufsize", str(edl.get("bufsize", "40M"))]
+        else:
+            venc = ["-c:v", VCODEC, "-b:v", vbitrate]
         cmd += [_filter_script_flag(), gfile, "-map", vmap, "-map", amap,
-                "-c:v", VCODEC, "-b:v", vbitrate, "-c:a", "aac", "-b:a", "192k",
+                *venc, "-c:a", "aac", "-b:a", "192k",
                 "-ar", "48000", "-movflags", "+faststart", out]
         _run(cmd)
     finally:
         os.unlink(gfile)
+        for png, _, _ in text_pngs:
+            os.unlink(png)
         if _av1_tmp_dir and os.path.isdir(_av1_tmp_dir):
             import shutil as _shutil
             _shutil.rmtree(_av1_tmp_dir, ignore_errors=True)
