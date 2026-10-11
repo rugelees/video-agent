@@ -446,3 +446,30 @@ def test_edl_texts_overlay_and_vfade(test_mp4, tmp_path):
     assert white_px(2.9) < white_px(1.5)            # gone after the window
     dark = _frame_px(out, 0.0, 5, 5)
     assert max(dark) < 30                           # vfade_in starts from black
+
+
+def test_edl_chunked_matches_monolithic(av_mp4, music_wav, tmp_path):
+    edit = {"fps": 30, "width": 320, "height": 240,
+            "music": {"src": music_wav, "gain_db": -18, "duck": False},
+            "texts": [{"text": "HOLA", "start": 0.5, "end": 2.0, "size": 60, "fade": 0.2}],
+            "clips": [{"src": av_mp4, "start": 0.0, "end": 2.0, "vfade_in": 0.3, "rationale": "a"},
+                      {"src": av_mp4, "start": 3.0, "end": 5.5, "gain_db": -6, "rationale": "b"},
+                      {"src": av_mp4, "start": 6.0, "end": 7.5, "rationale": "c"}]}
+    ep = tmp_path / "chunk.json"
+    ep.write_text(json.dumps(edit))
+    mono, chunked = str(tmp_path / "mono.mp4"), str(tmp_path / "chunked.mp4")
+    va.edl_render(str(ep), mono)
+    va.edl_render_chunked(str(ep), chunked, jobs=2)
+    a, b = va.video_info(mono), va.video_info(chunked)
+    assert abs(a["duration"] - b["duration"]) < 0.1
+    assert a["nframes"] == b["nframes"]
+
+
+def test_edl_chunked_rejects_audio_lead(av_mp4, tmp_path):
+    edit = {"fps": 30, "width": 320, "height": 240,
+            "clips": [{"src": av_mp4, "start": 1.0, "end": 2.0, "rationale": "a"},
+                      {"src": av_mp4, "start": 3.0, "end": 4.0, "audio_lead": 0.3, "rationale": "b"}]}
+    ep = tmp_path / "bad.json"
+    ep.write_text(json.dumps(edit))
+    with pytest.raises(ValueError):
+        va.edl_render_chunked(str(ep), str(tmp_path / "x.mp4"))

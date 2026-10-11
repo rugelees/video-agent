@@ -1338,7 +1338,7 @@ def _edl_check_cutaway(i, clip, fps):
             f"audio. A cutaway swaps the picture only — the two must match (fix vstart/vend).")
 
 
-def edl_render(edl_path: str, out: str, draft: bool = False):
+def edl_render(edl_path: str, out: str, draft: bool = False, seek: bool = False):
     """Execute an edit.json (Edit Decision List) → one re-encoded video.
 
     Schema (see the edl-edit skill):
@@ -1377,6 +1377,11 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
     Video and audio are concatenated as **two independent chains**, so `audio_lead` can move
     the sound edit off the picture edit (J/L cuts) without desyncing anything downstream.
     `draft` renders small and cheap for the internal verify loop — never as a deliverable.
+    `seek` opens each source with a fast input seek (-ss) near its first use instead of
+    decoding from t=0; only meaningful when every source is used once (the chunked renderer
+    renders one clip at a time). Optional EDL keys `acodec` (e.g. pcm_s16le, for lossless
+    intermediates) and `_seam_edges` ([fade_in, fade_out] seam fades for a lone clip) exist
+    for that renderer too.
     """
     edl = json.load(open(edl_path))
     clips = edl["clips"]
@@ -1401,6 +1406,18 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
     windows = _edl_audio_windows(clips)
     for i, c in enumerate(clips):
         _edl_check_cutaway(i, c, fps)
+
+    seek_off: dict[str, float] = {}
+    if seek:
+        for i, c in enumerate(clips):
+            a_s, a_e = windows[i]
+            v_s = float(c.get("vstart", c["start"]))
+            uses = [(c["src"], min(a_s, v_s))] if "vsrc" not in c else \
+                   [(c["src"], a_s), (c["vsrc"], v_s)]
+            for src, t in uses:
+                k = os.path.abspath(src)
+                seek_off[k] = min(seek_off.get(k, 1e9), max(0.0, t - 1.0))
+        seek_off = {k: round(v, 3) for k, v in seek_off.items()}
 
     # AV1 cannot be decoded by ffmpeg's trim filter on this platform — pre-transcode
     # any AV1 clip segments to temp H.264 files so the filter_complex works cleanly.
@@ -1451,6 +1468,8 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
         else:
             a_src, a_off = _resolve_av1(c["src"], min(a_s, v_s), max(a_e, v_e))
             v_src, v_off = a_src, a_off
+        v_off += seek_off.get(os.path.abspath(v_src), 0.0)
+        a_off += seek_off.get(os.path.abspath(a_src), 0.0)
         v_s, v_e = v_s - v_off, v_e - v_off
         a_s, a_e = a_s - a_off, a_e - a_off
         vi, ai = _idx(v_src), _idx(a_src)
@@ -1471,8 +1490,9 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
         ap = os.path.abspath(a_src)
         if ap not in audio_cache:
             audio_cache[ap] = _has_audio(a_src)
+        edges = edl.get("_seam_edges") or [i > 0, i < n - 1]
         achain = _edl_achain(a_s, a_e, seam_fade,
-                             fade_in=i > 0, fade_out=i < n - 1,
+                             fade_in=edges[0], fade_out=edges[1],
                              gain_db=c.get("gain_db", 0.0), afilter=c.get("afilter"))
         if audio_cache[ap]:
             parts.append(f"[{ai}:a]{achain}[a{i}]")
@@ -1480,7 +1500,8 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
             need_silence = True
             parts.append(f"[__SIL__:a]"
                          + _edl_achain(0.0, a_e - a_s, seam_fade,
-                                       fade_in=i > 0, fade_out=i < n - 1)
+                                       fade_in=edges[0], fade_out=edges[1],
+                                       gain_db=c.get("gain_db", 0.0))
                          + f"[a{i}]")
 
     # Two independent concat chains: `audio_lead` makes per-segment A and V lengths differ
@@ -1553,6 +1574,8 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
     try:
         cmd = ["ffmpeg", "-y"]
         for p in inputs:
+            if seek_off.get(p, 0.0) > 0:
+                cmd += ["-ss", f"{seek_off[p]:.3f}"]
             cmd += ["-i", p]
         if need_silence:
             cmd += ["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"]
@@ -1571,9 +1594,13 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
                 venc += ["-maxrate", str(edl["maxrate"]), "-bufsize", str(edl.get("bufsize", "40M"))]
         else:
             venc = ["-c:v", VCODEC, "-b:v", vbitrate]
+        acodec = edl.get("acodec")
+        aenc = ["-c:a", acodec] if acodec else ["-c:a", "aac", "-b:a", "192k"]
         cmd += [_filter_script_flag(), gfile, "-map", vmap, "-map", amap,
-                *venc, "-c:a", "aac", "-b:a", "192k",
-                "-ar", "48000", "-movflags", "+faststart", out]
+                *venc, *aenc, "-ar", "48000"]
+        if not out.lower().endswith(".mkv"):
+            cmd += ["-movflags", "+faststart"]
+        cmd += [out]
         _run(cmd)
     finally:
         os.unlink(gfile)
@@ -1591,6 +1618,82 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
 # The mechanical tools above decide WHERE a cut can land. These decide WHEN it should,
 # which is what separates an edit that flows from one that's merely accurate.
 # ---------------------------------------------------------------------------
+
+def edl_render_chunked(edl_path: str, out: str, draft: bool = False, jobs: int = 2,
+                       work_dir: str | None = None, keep: bool = False):
+    """Render an EDL clip-by-clip, then assemble — for cut lists too big for one filtergraph.
+
+    One ffmpeg filtergraph over dozens of inputs reads every input in lockstep by *file*
+    time and buffers each not-yet-needed segment's frames, so memory grows with the number of
+    clips and the process gets OOM-killed. Here each clip renders alone (fast input seek,
+    near-lossless H.264 + PCM intermediates), the pieces are joined with the concat demuxer
+    (stream copy → frame- and sample-exact, no A/V drift), and ONE final pass applies the
+    grade, titles, music bed and the delivery encode to the assembled file.
+
+    Supports everything edl_render does except `audio_lead` (split edits cross clip
+    boundaries, which are independent here) and `vsrc` cutaways; both raise.
+    """
+    import shutil
+    from concurrent.futures import ThreadPoolExecutor
+
+    edl = json.load(open(edl_path))
+    clips = _edl_quantize(edl["clips"], edl.get("fps", 60))
+    for i, c in enumerate(clips):
+        if c.get("audio_lead") or "vsrc" in c:
+            raise ValueError(f"clip {i}: audio_lead/vsrc are not supported with --chunked")
+    fps = edl.get("fps", 60)
+    n = len(clips)
+    work = work_dir or tempfile.mkdtemp(prefix="edl_chunks_")
+    os.makedirs(work, exist_ok=True)
+    seam_fade = float(edl.get("seam_fade", 0.015))
+
+    def piece(i):
+        seg = os.path.join(work, f"seg_{i:04d}.mkv")
+        if os.path.exists(seg):
+            return seg
+        mini = {"fps": fps, "width": edl.get("width", 1920), "height": edl.get("height", 1080),
+                "seam_fade": seam_fade, "crf": 12, "preset": "veryfast",
+                "acodec": "pcm_s16le",
+                "_seam_edges": [i > 0, i < n - 1],
+                "clips": [clips[i]]}
+        mp = os.path.join(work, f"seg_{i:04d}.json")
+        json.dump(mini, open(mp, "w"))
+        tmp = seg + ".part.mkv"
+        edl_render(mp, tmp, draft=draft, seek=True)
+        os.replace(tmp, seg)
+        return seg
+
+    print(f"  [edl] chunked render: {n} clips, {jobs} parallel → {work}")
+    with ThreadPoolExecutor(jobs) as ex:
+        segs = []
+        for i, seg in enumerate(ex.map(piece, range(n)), 1):
+            segs.append(seg)
+            if i % 10 == 0 or i == n:
+                print(f"  [edl] pieces {i}/{n}", flush=True)
+
+    lst = os.path.join(work, "list.txt")
+    with open(lst, "w") as f:
+        for seg in segs:
+            f.write(f"file '{seg}'\n")
+    assembled = os.path.join(work, "assembled.mkv")
+    _run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst, "-c", "copy", assembled])
+
+    total = video_info(assembled)["duration"]
+    final = {"fps": fps, "width": edl.get("width", 1920), "height": edl.get("height", 1080),
+             "seam_fade": 0.0,
+             "clips": [{"src": assembled, "start": 0.0, "end": round(total * fps) / fps}]}
+    for k in ("grade", "audio_fix", "music", "texts", "crf", "preset", "maxrate", "bufsize",
+              "vbitrate"):
+        if k in edl:
+            final[k] = edl[k]
+    fp = os.path.join(work, "final.json")
+    json.dump(final, open(fp, "w"))
+    print("  [edl] final pass: titles + music + delivery encode", flush=True)
+    edl_render(fp, out, draft=draft)
+    if not keep and work_dir is None:
+        shutil.rmtree(work, ignore_errors=True)
+    return out
+
 
 def edl_report(edl_path: str) -> str:
     """Render an EDL's pacing as text — shot lengths, split edits, and rhythm warnings.
@@ -2107,6 +2210,11 @@ def main():
                     help="print the pacing report (shot lengths + rhythm warnings) first")
     el.add_argument("--dry-run", action="store_true",
                     help="with --report: show the pacing and exit without rendering")
+    el.add_argument("--chunked", action="store_true",
+                    help="render clip-by-clip then assemble (big cut lists; avoids OOM)")
+    el.add_argument("--jobs", type=int, default=2, help="parallel clip renders for --chunked")
+    el.add_argument("--work-dir", default=None,
+                    help="with --chunked: keep/reuse pieces here (resumable)")
 
     tg = sub.add_parser("tighten",
                         help="collapse dead air to a target beat → writes an edit.json")
@@ -2286,7 +2394,10 @@ def main():
         if a.report or a.dry_run:
             print(edl_report(a.edit), end="")
         if not a.dry_run:
-            edl_render(a.edit, a.out, draft=a.draft)
+            if a.chunked:
+                edl_render_chunked(a.edit, a.out, draft=a.draft, jobs=a.jobs, work_dir=a.work_dir)
+            else:
+                edl_render(a.edit, a.out, draft=a.draft)
             print(a.out)
 
     elif a.cmd == "tighten":
