@@ -83,10 +83,16 @@ def _run(cmd: list[str]) -> str:
 # ---------------------------------------------------------------------------
 
 def video_info(path: str) -> dict:
-    """Return {fps, width, height, duration, nframes, codec} for the first video stream."""
+    """Return {fps, width, height, duration, nframes, codec, rotation} for the first video stream.
+
+    width/height are the *displayed* size: when the file carries a 90/270 rotation tag
+    (action cams, phones) they are swapped, because that is what ffmpeg's filtergraph sees
+    after autorotate. `rotation` is the tag in degrees (0 when absent).
+    """
     out = _run(["ffprobe", "-v", "error", "-select_streams", "v:0",
                 "-show_entries",
-                "stream=r_frame_rate,width,height,duration,nb_frames,codec_name",
+                "stream=r_frame_rate,width,height,duration,nb_frames,codec_name"
+                ":stream_tags=rotate:stream_side_data=rotation",
                 "-show_entries", "format=duration", "-of", "json", path])
     data = json.loads(out)
     s = data["streams"][0]
@@ -95,9 +101,18 @@ def video_info(path: str) -> dict:
     duration = float(s.get("duration") or data["format"]["duration"])
     nframes = (int(s["nb_frames"]) if s.get("nb_frames", "N/A") != "N/A"
                else round(duration * fps))
-    return {"fps": fps, "width": int(s["width"]), "height": int(s["height"]),
+    rotation = 0
+    for sd in s.get("side_data_list", []):
+        if "rotation" in sd:
+            rotation = int(round(float(sd["rotation"])))
+    if not rotation and s.get("tags", {}).get("rotate"):
+        rotation = int(s["tags"]["rotate"])
+    w, h = int(s["width"]), int(s["height"])
+    if abs(rotation) % 180 == 90:
+        w, h = h, w
+    return {"fps": fps, "width": w, "height": h,
             "duration": duration, "nframes": nframes,
-            "codec": s.get("codec_name", "unknown")}
+            "codec": s.get("codec_name", "unknown"), "rotation": rotation}
 
 
 def speech_segments(path: str, noise_db: float = -30.0,
@@ -1965,7 +1980,9 @@ def main():
         info = video_info(a.src)
         print(f"duration:   {info['duration']:.3f}s")
         print(f"fps:        {info['fps']}")
-        print(f"resolution: {info['width']}x{info['height']}")
+        orient = "vertical" if info["height"] > info["width"] else "horizontal"
+        rot = f"  (rotation tag {info['rotation']}°)" if info["rotation"] else ""
+        print(f"resolution: {info['width']}x{info['height']}  {orient}{rot}")
         print(f"frames:     {info['nframes']}")
         codec = info["codec"]
         suffix = "  ← ffmpeg cannot decode; trim/frame/detect use PyAV" if codec in _PYAV_DECODE_CODECS else ""
