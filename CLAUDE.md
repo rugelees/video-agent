@@ -67,7 +67,7 @@ Wrong: `--start 120` (= frame 120). Correct: `--start 120.0` or `--start 00:02:0
 uv run video-agent info video.mp4
 #   duration / fps / resolution / frames / codec
 
-# transcribe — speech to text (mlx-whisper, Apple Silicon; model ~1.5GB on first run)
+# transcribe — speech to text (mlx-whisper on Apple Silicon, faster-whisper elsewhere; model ~1.5GB on first run)
 uv run video-agent transcribe video.mp4 [-o out.txt]      # [MM:SS.ss --> MM:SS.ss] text
 uv run video-agent transcribe video.mp4 --words -o w.txt  # start_sec  end_sec  word
 uv run video-agent transcribe video.mp4 --clean --srt -o subs.srt   # SubRip subtitle file
@@ -205,7 +205,8 @@ va.concat(clips, out)
 
 ## ffmpeg — use directly for all editing
 
-macOS encoder: `h264_videotoolbox`. Linux: `libx264`.
+macOS encoder: `h264_videotoolbox`. Linux: `libx264`. (`video_agent.VCODEC` picks this automatically;
+override with `VIDEO_AGENT_VCODEC`. Raw ffmpeg commands below use the macOS name — swap in `libx264` on Linux.)
 
 ```bash
 # Info

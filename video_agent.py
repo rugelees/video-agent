@@ -30,10 +30,15 @@ import argparse
 import json
 import os
 import subprocess
+import sys
 import tempfile
 
-# H.264 encoder. VideoToolbox = macOS hardware; swap to "libx264" elsewhere.
-VCODEC = "h264_videotoolbox"
+# H.264 encoder. VideoToolbox = macOS hardware; libx264 everywhere else.
+# Override with VIDEO_AGENT_VCODEC (e.g. h264_nvenc).
+VCODEC = os.environ.get(
+    "VIDEO_AGENT_VCODEC",
+    "h264_videotoolbox" if sys.platform == "darwin" else "libx264",
+)
 
 # Codecs that ffmpeg cannot decode on this machine (AV1 native decoder broken).
 _PYAV_DECODE_CODECS = {"av1"}
@@ -56,6 +61,14 @@ def xai_client():
             "  uv sync --extra vfx   (or: pip install 'video-agent[vfx]')"
         )
     return Client(api_key=key)
+
+
+def _filter_script_flag() -> str:
+    """`-/filter_complex FILE` needs ffmpeg >= 7; older builds use -filter_complex_script."""
+    import re
+    out = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True).stdout
+    m = re.search(r"ffmpeg version \D*(\d+)", out)
+    return "-/filter_complex" if m and int(m.group(1)) >= 7 else "-filter_complex_script"
 
 
 def _run(cmd: list[str]) -> str:
@@ -126,21 +139,44 @@ def speech_segments(path: str, noise_db: float = -30.0,
     return spans
 
 
-def whisper_segments(src: str, model: str = "mlx-community/whisper-large-v3-turbo",
+_DEFAULT_WHISPER_MODEL = "mlx-community/whisper-large-v3-turbo"
+
+
+def _mlx_available() -> bool:
+    try:
+        import mlx_whisper  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+def whisper_segments(src: str, model: str = _DEFAULT_WHISPER_MODEL,
                      clean: bool = False) -> list:
     """Transcribe `src` and return whisper segments (each: {start, end, text, words}).
 
     Verbatim by default (keeps um/uh) — see the `transcribe` command for the rationale.
-    Shared by the transcribe and captions commands.
+    Shared by the transcribe and captions commands. Uses mlx-whisper on Apple Silicon and
+    falls back to faster-whisper (CPU/CUDA) everywhere else.
     """
-    import mlx_whisper
     verbatim_kwargs = {} if clean else dict(
         condition_on_previous_text=False,
         initial_prompt="Um, uh, er, hmm...",
     )
-    return mlx_whisper.transcribe(
-        src, path_or_hf_repo=model, word_timestamps=True, **verbatim_kwargs,
-    )["segments"]
+    if _mlx_available():
+        import mlx_whisper
+        return mlx_whisper.transcribe(
+            src, path_or_hf_repo=model, word_timestamps=True, **verbatim_kwargs,
+        )["segments"]
+
+    from faster_whisper import WhisperModel
+    fw_model = "large-v3-turbo" if model == _DEFAULT_WHISPER_MODEL else model
+    fw = WhisperModel(fw_model, device="auto", compute_type="int8")
+    segs, _ = fw.transcribe(src, word_timestamps=True, **verbatim_kwargs)
+    return [
+        {"start": s.start, "end": s.end, "text": s.text,
+         "words": [{"word": w.word, "start": w.start, "end": w.end} for w in (s.words or [])]}
+        for s in segs
+    ]
 
 
 def _srt_timestamp(t: float, sep: str = ",") -> str:
@@ -1348,7 +1384,7 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
         if music:
             # Loop the bed so a short track still covers the whole cut.
             cmd += ["-stream_loop", "-1", "-i", music["src"]]
-        cmd += ["-/filter_complex", gfile, "-map", vmap, "-map", amap,
+        cmd += [_filter_script_flag(), gfile, "-map", vmap, "-map", amap,
                 "-c:v", VCODEC, "-b:v", vbitrate, "-c:a", "aac", "-b:a", "192k",
                 "-ar", "48000", "-movflags", "+faststart", out]
         _run(cmd)
@@ -1501,7 +1537,7 @@ def beats(path: str, sr: int = 22050, hop: int = 512, n_fft: int = 1024,
     autocorrelating that envelope, and the beat grid is the best-fitting phase of that
     period, so beats stay on the pulse through passages with no drum hit.
 
-    Uses numpy + scipy, both already present via mlx-whisper — no new dependency.
+    Uses numpy + scipy, both declared in pyproject.toml — no new dependency.
     """
     import numpy as np
     from scipy.signal import find_peaks
@@ -1746,7 +1782,7 @@ def main():
     inf = sub.add_parser("info", help="print video metadata (fps, resolution, duration, frames, codec)")
     inf.add_argument("src")
 
-    tr = sub.add_parser("transcribe", help="transcribe audio with timestamps (mlx-whisper)")
+    tr = sub.add_parser("transcribe", help="transcribe audio with timestamps (mlx-whisper on Apple Silicon, else faster-whisper)")
     tr.add_argument("src")
     tr.add_argument("-o", "--out", default=None, help="output .txt file (default: print to stdout)")
     tr.add_argument("--words", action="store_true",
