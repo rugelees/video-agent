@@ -1,0 +1,515 @@
+{
+ "fps": 24,
+ "width": 1080,
+ "height": 1920,
+ "seam_fade": 0.02,
+ "crf": 15,
+ "preset": "slow",
+ "maxrate": "24M",
+ "bufsize": "48M",
+ "music": {
+  "src": "edits/bed.wav",
+  "gain_db": 0.0,
+  "duck": false,
+  "fade_in": 0.0,
+  "fade_out": 3.0
+ },
+ "texts": [
+  {
+   "start": 268.5,
+   "end": 277.5,
+   "fade": 1.2,
+   "text": "Gracias, Cartagena",
+   "sub": "y por muchos viajes más",
+   "font": "playfair-italic",
+   "weight": "Medium",
+   "size": 104,
+   "sub_font": "montserrat",
+   "sub_weight": "Medium",
+   "sub_size": 40,
+   "sub_tracking": 4,
+   "align": "center",
+   "y": 0.4,
+   "line_gap": 0.5
+  }
+ ],
+ "clips": [
+  {
+   "src": "inputs/norm/dji_export_20260930_200312_0.f_compose_0.mp4",
+   "start": 28.0,
+   "end": 37.25,
+   "rationale": "Opening image: calm pink sunset over the water, held for two bars so the piece starts slow",
+   "vfade_in": 0.7,
+   "gain_db": -17.8
+  },
+  {
+   "src": "inputs/norm/dji_export_20261001_185654_0.f_compose_0.mp4",
+   "start": 175.5,
+   "end": 177.791667,
+   "rationale": "Teaser: the fish, the highlight of the trip, one bar",
+   "gain_db": -17.0
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_090317_0.f_compose_0.mp4",
+   "start": 2.0,
+   "end": 4.291667,
+   "rationale": "Teaser: boat wake past the mangroves",
+   "gain_db": -16.6
+  },
+  {
+   "src": "inputs/norm/dji_export_20260930_212101_0.f_compose_0.mp4",
+   "start": 61.0,
+   "end": 63.333333,
+   "rationale": "Teaser: colonial street with flags",
+   "gain_db": -15.4
+  },
+  {
+   "src": "inputs/norm/dji_export_20260930_211042_0.f_compose_0.mp4",
+   "start": 0.0,
+   "end": 4.583333,
+   "rationale": "Pool from the water: arrival, settling in",
+   "gain_db": -13.2
+  },
+  {
+   "src": "inputs/norm/dji_export_20260930_211042_0.f_compose_0.mp4",
+   "start": 16.0,
+   "end": 20.625,
+   "rationale": "Friend swimming in the pool, personality beat",
+   "gain_db": -13.2
+  },
+  {
+   "src": "inputs/norm/dji_export_20260930_211400_0.f_compose_0.mp4",
+   "start": 10.0,
+   "end": 14.625,
+   "rationale": "Walking a colourful street, first look at the old town",
+   "gain_db": -13.5
+  },
+  {
+   "src": "inputs/norm/dji_export_20260930_211400_0.f_compose_0.mp4",
+   "start": 65.0,
+   "end": 67.291667,
+   "rationale": "Yellow taxi and corner",
+   "gain_db": -13.5
+  },
+  {
+   "src": "inputs/norm/dji_export_20260930_211649_0.f_compose_0.mp4",
+   "start": 82.0,
+   "end": 84.333333,
+   "rationale": "Face to camera with sunglasses",
+   "gain_db": -17.7
+  },
+  {
+   "src": "inputs/norm/dji_export_20260930_212101_0.f_compose_0.mp4",
+   "start": 63.0,
+   "end": 67.625,
+   "rationale": "Yellow colonial buildings with balconies",
+   "gain_db": -15.4
+  },
+  {
+   "src": "inputs/norm/dji_export_20260930_212101_0.f_compose_0.mp4",
+   "start": 108.0,
+   "end": 110.291667,
+   "rationale": "Yellow cab crossing, city life",
+   "gain_db": -15.4
+  },
+  {
+   "src": "inputs/norm/dji_export_20260930_195948_0.f_compose_0.mp4",
+   "start": 3.0,
+   "end": 7.625,
+   "rationale": "Beach at dusk: tonal shift from city to sea",
+   "gain_db": -5.9
+  },
+  {
+   "src": "inputs/norm/dji_export_20260930_200105_0.f_compose_0.mp4",
+   "start": 13.0,
+   "end": 17.583333,
+   "rationale": "Waves and skyline under the pink sky",
+   "gain_db": -13.7
+  },
+  {
+   "src": "inputs/norm/dji_export_20260930_200714_0.f_compose_0.mp4",
+   "start": 4.5,
+   "end": 6.833333,
+   "rationale": "Friend washing his hair: small human moment",
+   "gain_db": -16.7
+  },
+  {
+   "src": "inputs/norm/IMG_7398.mp4",
+   "start": 0.0,
+   "end": 4.75,
+   "rationale": "Dock in the morning: the day starts, boats waiting",
+   "vfade_in": 0.5,
+   "vfilter": "eq=contrast=1.12:saturation=1.35:gamma=0.92,curves=all='0/0 0.2/0.15 0.5/0.5 0.8/0.84 1/1'",
+   "gain_db": -5.5
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_090650_0.f_compose_0.mp4",
+   "start": 0.0,
+   "end": 4.75,
+   "rationale": "Selfie on the boat with sunglasses",
+   "gain_db": -19.6
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_090133_0.f_compose_0.mp4",
+   "start": 3.0,
+   "end": 7.75,
+   "rationale": "Bow of the boat, house on stilts passing",
+   "gain_db": -11.0
+  },
+  {
+   "src": "inputs/norm/IMG_7410.mp4",
+   "start": 0.0,
+   "end": 4.75,
+   "rationale": "iPhone wide: wake and islands",
+   "vfilter": "eq=contrast=1.12:saturation=1.35:gamma=0.92,curves=all='0/0 0.2/0.15 0.5/0.5 0.8/0.84 1/1'",
+   "gain_db": -15.3
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_090442_0.f_compose_0.mp4",
+   "start": 3.0,
+   "end": 7.75,
+   "rationale": "Open sea, islands on the horizon",
+   "gain_db": -12.6
+  },
+  {
+   "src": "inputs/norm/IMG_7411.mp4",
+   "start": 3.5,
+   "end": 5.875,
+   "rationale": "Approaching shore",
+   "vfilter": "eq=contrast=1.12:saturation=1.35:gamma=0.92,curves=all='0/0 0.2/0.15 0.5/0.5 0.8/0.84 1/1'",
+   "gain_db": -6.6
+  },
+  {
+   "src": "inputs/norm/IMG_7407.mp4",
+   "start": 0.0,
+   "end": 4.75,
+   "rationale": "Arrival walk on the boardwalk",
+   "vfilter": "eq=contrast=1.12:saturation=1.35:gamma=0.92,curves=all='0/0 0.2/0.15 0.5/0.5 0.8/0.84 1/1'",
+   "gain_db": 4.7
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_083840_0.f_compose_0.mp4",
+   "start": 2.0,
+   "end": 6.791667,
+   "rationale": "Palapa shade over the beach, relaxed",
+   "gain_db": -14.9
+  },
+  {
+   "src": "inputs/norm/IMG_7414.mp4",
+   "start": 0.0,
+   "end": 4.75,
+   "rationale": "People wading in the shallows",
+   "vfilter": "eq=contrast=1.12:saturation=1.35:gamma=0.92,curves=all='0/0 0.2/0.15 0.5/0.5 0.8/0.84 1/1'",
+   "gain_db": -14.8
+  },
+  {
+   "src": "inputs/norm/IMG_7417.mp4",
+   "start": 0.0,
+   "end": 2.375,
+   "rationale": "Beach view from under the palm roof",
+   "vfilter": "eq=contrast=1.12:saturation=1.35:gamma=0.92,curves=all='0/0 0.2/0.15 0.5/0.5 0.8/0.84 1/1'",
+   "gain_db": -12.0
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_082428_0.f_compose_0.mp4",
+   "start": 5.0,
+   "end": 7.375,
+   "rationale": "Faces in the water, the group having fun",
+   "gain_db": -13.5
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_083115_0.f_compose_0.mp4",
+   "start": 0.0,
+   "end": 4.75,
+   "rationale": "Snorkel mask selfie before going under",
+   "gain_db": -18.0
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_083715_0.f_compose_0.mp4",
+   "start": 4.0,
+   "end": 8.75,
+   "rationale": "Water-level view of the sea, breath before the fish",
+   "vfade_out": 0.5,
+   "gain_db": -13.8
+  },
+  {
+   "src": "inputs/norm/dji_export_20261001_185241_0.f_compose_0.mp4",
+   "start": 12.0,
+   "end": 16.291667,
+   "rationale": "Surface snorkelling with the group",
+   "vfade_in": 0.5,
+   "gain_db": -17.9
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_084126_0.f_compose_0.mp4",
+   "start": 21.0,
+   "end": 25.291667,
+   "rationale": "Rocky bottom, first fish",
+   "gain_db": -21.3
+  },
+  {
+   "src": "inputs/norm/dji_export_20261001_185654_0.f_compose_0.mp4",
+   "start": 171.0,
+   "end": 175.291667,
+   "rationale": "The fish start to gather",
+   "gain_db": -19.0
+  },
+  {
+   "src": "inputs/norm/dji_export_20261001_185654_0.f_compose_0.mp4",
+   "start": 178.0,
+   "end": 186.541667,
+   "rationale": "Dozens of striped fish: the shot to hold",
+   "gain_db": -19.0
+  },
+  {
+   "src": "inputs/norm/dji_export_20261001_185654_0.f_compose_0.mp4",
+   "start": 187.0,
+   "end": 191.291667,
+   "rationale": "Hands feeding them",
+   "gain_db": -19.0
+  },
+  {
+   "src": "inputs/norm/dji_export_20261001_190320_0.f_compose_0.mp4",
+   "start": 8.0,
+   "end": 10.166667,
+   "rationale": "A fish nibbling the hand",
+   "gain_db": -18.9
+  },
+  {
+   "src": "inputs/norm/dji_export_20261001_190320_0.f_compose_0.mp4",
+   "start": 46.0,
+   "end": 50.25,
+   "rationale": "Legs and fish at the bottom",
+   "gain_db": -18.9
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_084333_0.f_compose_0_v.mp4",
+   "start": 3.0,
+   "end": 7.291667,
+   "rationale": "Landscape original re-cropped to 9:16: coral heads"
+  },
+  {
+   "src": "inputs/norm/dji_export_20261001_190320_0.f_compose_0.mp4",
+   "start": 83.0,
+   "end": 87.291667,
+   "rationale": "Fish up close",
+   "gain_db": -18.9
+  },
+  {
+   "src": "inputs/norm/dji_export_20261001_190320_0.f_compose_0.mp4",
+   "start": 93.0,
+   "end": 97.291667,
+   "rationale": "Big striped fish at the lens",
+   "gain_db": -18.9
+  },
+  {
+   "src": "inputs/norm/dji_export_20261001_191200_0.f_compose_0.mp4",
+   "start": 14.0,
+   "end": 18.291667,
+   "rationale": "School of yellow fish",
+   "gain_db": -18.9
+  },
+  {
+   "src": "inputs/norm/dji_export_20261001_191347_0.f_compose_0.mp4",
+   "start": 17.0,
+   "end": 21.291667,
+   "rationale": "Snorkeler selfie with fish",
+   "gain_db": -18.8
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_084702_0.f_compose_0.mp4",
+   "start": 2.0,
+   "end": 6.291667,
+   "rationale": "Colourful fish over the rocks",
+   "gain_db": -17.3
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_084833_0.f_compose_0.mp4",
+   "start": 2.0,
+   "end": 4.125,
+   "rationale": "Parrotfish and small fish over the rocks",
+   "gain_db": -18.8
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_084948_0.f_compose_0.mp4",
+   "start": 14.0,
+   "end": 18.291667,
+   "rationale": "Cave full of yellow fish, light from above",
+   "gain_db": -18.9
+  },
+  {
+   "src": "inputs/norm/dji_export_20261001_190320_0.f_compose_0.mp4",
+   "start": 132.0,
+   "end": 134.125,
+   "rationale": "Close fish, face level",
+   "gain_db": -18.9
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_085359_0.f_compose_0.mp4",
+   "start": 43.0,
+   "end": 47.291667,
+   "rationale": "Reef and coral",
+   "gain_db": -20.9
+  },
+  {
+   "src": "inputs/norm/dji_export_20261001_190320_0.f_compose_0.mp4",
+   "start": 202.0,
+   "end": 206.291667,
+   "rationale": "Fish eating from a hand",
+   "gain_db": -18.9
+  },
+  {
+   "src": "inputs/norm/dji_export_20261001_190320_0.f_compose_0.mp4",
+   "start": 256.0,
+   "end": 258.125,
+   "rationale": "Fish around a swimmer",
+   "gain_db": -18.9
+  },
+  {
+   "src": "inputs/norm/dji_export_20261001_190320_0.f_compose_0.mp4",
+   "start": 342.0,
+   "end": 346.291667,
+   "rationale": "Last big gathering of fish",
+   "gain_db": -18.9
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_084833_0.f_compose_0.mp4",
+   "start": 26.0,
+   "end": 28.166667,
+   "rationale": "Big striped sergeant fish passes",
+   "gain_db": -18.8
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_084515_0.f_compose_0_v.mp4",
+   "start": 11.0,
+   "end": 15.291667,
+   "rationale": "Landscape original re-cropped to 9:16: legs over the seabed, then swimmers"
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_085958_0.f_compose_0_v.mp4",
+   "start": 0.5,
+   "end": 6.916667,
+   "rationale": "Landscape original re-cropped to 9:16: surface, stilt house and fish, calm exit"
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_090751_0.f_compose_0.mp4",
+   "start": 6.0,
+   "end": 12.416667,
+   "rationale": "Heading back: city skyline from the boat",
+   "vfade_out": 0.6,
+   "gain_db": -19.9
+  },
+  {
+   "src": "inputs/norm/IMG_7631.mp4",
+   "start": 0.0,
+   "end": 3.916667,
+   "rationale": "Driving through the city as the day ends",
+   "vfade_in": 0.5,
+   "vfilter": "eq=contrast=1.12:saturation=1.35:gamma=0.92,curves=all='0/0 0.2/0.15 0.5/0.5 0.8/0.84 1/1'",
+   "gain_db": -8.8
+  },
+  {
+   "src": "inputs/norm/IMG_7570.mp4",
+   "start": 0.5,
+   "end": 6.333333,
+   "rationale": "Dancers in yellow in the plaza, street life at night",
+   "vfilter": "eq=contrast=1.12:saturation=1.35:gamma=0.92,curves=all='0/0 0.2/0.15 0.5/0.5 0.8/0.84 1/1'",
+   "gain_db": -8.1
+  },
+  {
+   "src": "inputs/norm/DF7CF623-C32F-499F-A692-0FDB01D74684.mp4",
+   "start": 0.0,
+   "end": 7.791667,
+   "rationale": "Short party clip in red light, the night out",
+   "gain_db": -18.0
+  },
+  {
+   "src": "inputs/norm/IMG_7637.mp4",
+   "start": 1.0,
+   "end": 4.916667,
+   "rationale": "Rocks and a bird by the sea",
+   "vfilter": "eq=contrast=1.12:saturation=1.35:gamma=0.92,curves=all='0/0 0.2/0.15 0.5/0.5 0.8/0.84 1/1'",
+   "gain_db": 1.6
+  },
+  {
+   "src": "inputs/norm/IMG_7638.mp4",
+   "start": 0.0,
+   "end": 1.958333,
+   "rationale": "Grey beach, calm",
+   "vfilter": "eq=contrast=1.12:saturation=1.35:gamma=0.92,curves=all='0/0 0.2/0.15 0.5/0.5 0.8/0.84 1/1'",
+   "gain_db": -1.3
+  },
+  {
+   "src": "inputs/norm/IMG_7641.mp4",
+   "start": 2.0,
+   "end": 5.916667,
+   "rationale": "Seagulls at the water's edge",
+   "vfilter": "eq=contrast=1.12:saturation=1.35:gamma=0.92,curves=all='0/0 0.2/0.15 0.5/0.5 0.8/0.84 1/1'",
+   "gain_db": 1.4
+  },
+  {
+   "src": "inputs/norm/1791067540104.mp4",
+   "start": 1.0,
+   "end": 4.875,
+   "rationale": "Lifeguard hut on the sand: quiet establishing shot",
+   "vfilter": "eq=contrast=1.2:saturation=1.55:gamma=0.92,curves=all='0/0 0.2/0.15 0.5/0.5 0.8/0.85 1/1'",
+   "gain_db": -10.7
+  },
+  {
+   "src": "inputs/norm/1791068039802.mp4",
+   "start": 4.0,
+   "end": 7.916667,
+   "rationale": "Tree on the breakwater, the last light",
+   "vfilter": "eq=contrast=1.2:saturation=1.55:gamma=0.92,curves=all='0/0 0.2/0.15 0.5/0.5 0.8/0.85 1/1'",
+   "gain_db": -5.8
+  },
+  {
+   "src": "inputs/norm/A001_10031749_C019.mp4",
+   "start": 14.0,
+   "end": 21.791667,
+   "rationale": "Friends playing in the waves",
+   "vfilter": "eq=contrast=1.2:saturation=1.55:gamma=0.92,curves=all='0/0 0.2/0.15 0.5/0.5 0.8/0.85 1/1'",
+   "gain_db": -8.3
+  },
+  {
+   "src": "inputs/norm/1791119255902.mp4",
+   "start": 8.0,
+   "end": 11.916667,
+   "rationale": "Friends in the surf in the blue hour",
+   "vfilter": "eq=contrast=1.2:saturation=1.55:gamma=0.92,curves=all='0/0 0.2/0.15 0.5/0.5 0.8/0.85 1/1'",
+   "gain_db": -8.3
+  },
+  {
+   "src": "inputs/norm/1791067887927.mp4",
+   "start": 28.0,
+   "end": 31.916667,
+   "rationale": "Swimmers at dusk",
+   "vfilter": "eq=contrast=1.2:saturation=1.55:gamma=0.92,curves=all='0/0 0.2/0.15 0.5/0.5 0.8/0.85 1/1'",
+   "gain_db": -9.2
+  },
+  {
+   "src": "inputs/norm/1791067887927.mp4",
+   "start": 50.0,
+   "end": 53.875,
+   "rationale": "Friends coming out of the sea",
+   "vfilter": "eq=contrast=1.2:saturation=1.55:gamma=0.92,curves=all='0/0 0.2/0.15 0.5/0.5 0.8/0.85 1/1'",
+   "gain_db": -9.2
+  },
+  {
+   "src": "inputs/norm/1791119333104.mp4",
+   "start": 52.0,
+   "end": 55.916667,
+   "rationale": "Two friends walking out of the waves",
+   "vfilter": "eq=contrast=1.2:saturation=1.55:gamma=0.92,curves=all='0/0 0.2/0.15 0.5/0.5 0.8/0.85 1/1'",
+   "gain_db": -9.2
+  },
+  {
+   "src": "inputs/norm/dji_export_20260930_200312_0.f_compose_0.mp4",
+   "start": 58.0,
+   "end": 69.708333,
+   "rationale": "Bookend: back to the pink sunset from the opening; the ending breathes",
+   "vfade_out": 2.5,
+   "gain_db": -17.8
+  }
+ ]
+}

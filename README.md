@@ -201,8 +201,8 @@ uv run video-agent vfx-edit clip.mp4 --prompt "Add a cartoon explosion" \
 |---|---|
 | **Python** | 3.11+ with [uv](https://docs.astral.sh/uv/) |
 | **ffmpeg** | `ffmpeg` + `ffprobe` on PATH |
-| **macOS** | for hardware encoding — set `VCODEC = "libx264"` in `video_agent.py` on Linux |
-| **Apple Silicon** | for `transcribe` (mlx-whisper; ~1.5GB model on first use) |
+| **Encoder** | auto: `h264_videotoolbox` on macOS, `libx264` elsewhere (override with `VIDEO_AGENT_VCODEC`) |
+| **Transcription** | auto: mlx-whisper on Apple Silicon, faster-whisper (CPU/CUDA) elsewhere; ~1.5GB model on first use |
 | **API key** | *only* for the optional `vfx-edit` |
 
 Two build notes: this ffmpeg is LGPL, so `eq` and `drawtext` are unavailable — text renders via

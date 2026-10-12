@@ -67,7 +67,7 @@ Wrong: `--start 120` (= frame 120). Correct: `--start 120.0` or `--start 00:02:0
 uv run video-agent info video.mp4
 #   duration / fps / resolution / frames / codec
 
-# transcribe — speech to text (mlx-whisper, Apple Silicon; model ~1.5GB on first run)
+# transcribe — speech to text (mlx-whisper on Apple Silicon, faster-whisper elsewhere; model ~1.5GB on first run)
 uv run video-agent transcribe video.mp4 [-o out.txt]      # [MM:SS.ss --> MM:SS.ss] text
 uv run video-agent transcribe video.mp4 --words -o w.txt  # start_sec  end_sec  word
 uv run video-agent transcribe video.mp4 --clean --srt -o subs.srt   # SubRip subtitle file
@@ -162,6 +162,15 @@ uv run video-agent edl edit.json -o draft.mp4 --draft       # fast 480p, verific
 #   that window as its own segment file (trim+overlay, split points on silence boundaries so
 #   seam_fade can't notch a word) and list it as an extra clip — see edit_video_agent.json.
 #   VERIFY by re-transcribing the output: transcribe out.mp4 --clean.
+#   Long edits (50+ clips) / mixed sources: add `--chunked --jobs 2 [--work-dir DIR]` — renders
+#   each clip alone (input-seek), joins by stream copy, then one final pass for grade/music/
+#   texts. A monolithic filtergraph buffers every future segment and OOMs; chunked is resumable
+#   but rejects audio_lead/vsrc. Extra per-clip keys: fit (pad|cover|blur) + focus, gain_db,
+#   afilter, vfilter (per-clip colour fix), vfade_in/vfade_out; top-level: texts (PIL-rendered titles, fade, tracking),
+#   crf/preset/maxrate/bufsize (libx264 quality mode). Normalize mixed footage first with
+#   `uv run python scripts/normalize_footage.py SRC -o inputs/norm [--vcrop SUBSTR=FOCUS]`
+#   (1080p/24fps/SDR; HLG iPhone tone-mapped; --vcrop re-crops landscape to a true 9:16).
+#   Other helpers: scripts/contact_sheet.py (review sheets), scripts/photo_clips.py (stills).
 
 # tighten — collapse dead air to a natural beat → writes an edit.json (not a video)
 uv run video-agent tighten talk.mp4 -o edit.json --target-gap 0.5 --min-gap 1.0
@@ -205,7 +214,8 @@ va.concat(clips, out)
 
 ## ffmpeg — use directly for all editing
 
-macOS encoder: `h264_videotoolbox`. Linux: `libx264`.
+macOS encoder: `h264_videotoolbox`. Linux: `libx264`. (`video_agent.VCODEC` picks this automatically;
+override with `VIDEO_AGENT_VCODEC`. Raw ffmpeg commands below use the macOS name — swap in `libx264` on Linux.)
 
 ```bash
 # Info

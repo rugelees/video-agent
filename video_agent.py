@@ -30,10 +30,15 @@ import argparse
 import json
 import os
 import subprocess
+import sys
 import tempfile
 
-# H.264 encoder. VideoToolbox = macOS hardware; swap to "libx264" elsewhere.
-VCODEC = "h264_videotoolbox"
+# H.264 encoder. VideoToolbox = macOS hardware; libx264 everywhere else.
+# Override with VIDEO_AGENT_VCODEC (e.g. h264_nvenc).
+VCODEC = os.environ.get(
+    "VIDEO_AGENT_VCODEC",
+    "h264_videotoolbox" if sys.platform == "darwin" else "libx264",
+)
 
 # Codecs that ffmpeg cannot decode on this machine (AV1 native decoder broken).
 _PYAV_DECODE_CODECS = {"av1"}
@@ -58,6 +63,14 @@ def xai_client():
     return Client(api_key=key)
 
 
+def _filter_script_flag() -> str:
+    """`-/filter_complex FILE` needs ffmpeg >= 7; older builds use -filter_complex_script."""
+    import re
+    out = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True).stdout
+    m = re.search(r"ffmpeg version \D*(\d+)", out)
+    return "-/filter_complex" if m and int(m.group(1)) >= 7 else "-filter_complex_script"
+
+
 def _run(cmd: list[str]) -> str:
     p = subprocess.run(cmd, capture_output=True, text=True)
     if p.returncode != 0:
@@ -70,10 +83,16 @@ def _run(cmd: list[str]) -> str:
 # ---------------------------------------------------------------------------
 
 def video_info(path: str) -> dict:
-    """Return {fps, width, height, duration, nframes, codec} for the first video stream."""
+    """Return {fps, width, height, duration, nframes, codec, rotation} for the first video stream.
+
+    width/height are the *displayed* size: when the file carries a 90/270 rotation tag
+    (action cams, phones) they are swapped, because that is what ffmpeg's filtergraph sees
+    after autorotate. `rotation` is the tag in degrees (0 when absent).
+    """
     out = _run(["ffprobe", "-v", "error", "-select_streams", "v:0",
                 "-show_entries",
-                "stream=r_frame_rate,width,height,duration,nb_frames,codec_name",
+                "stream=r_frame_rate,width,height,duration,nb_frames,codec_name"
+                ":stream_tags=rotate:stream_side_data=rotation",
                 "-show_entries", "format=duration", "-of", "json", path])
     data = json.loads(out)
     s = data["streams"][0]
@@ -82,9 +101,18 @@ def video_info(path: str) -> dict:
     duration = float(s.get("duration") or data["format"]["duration"])
     nframes = (int(s["nb_frames"]) if s.get("nb_frames", "N/A") != "N/A"
                else round(duration * fps))
-    return {"fps": fps, "width": int(s["width"]), "height": int(s["height"]),
+    rotation = 0
+    for sd in s.get("side_data_list", []):
+        if "rotation" in sd:
+            rotation = int(round(float(sd["rotation"])))
+    if not rotation and s.get("tags", {}).get("rotate"):
+        rotation = int(s["tags"]["rotate"])
+    w, h = int(s["width"]), int(s["height"])
+    if abs(rotation) % 180 == 90:
+        w, h = h, w
+    return {"fps": fps, "width": w, "height": h,
             "duration": duration, "nframes": nframes,
-            "codec": s.get("codec_name", "unknown")}
+            "codec": s.get("codec_name", "unknown"), "rotation": rotation}
 
 
 def speech_segments(path: str, noise_db: float = -30.0,
@@ -126,21 +154,44 @@ def speech_segments(path: str, noise_db: float = -30.0,
     return spans
 
 
-def whisper_segments(src: str, model: str = "mlx-community/whisper-large-v3-turbo",
+_DEFAULT_WHISPER_MODEL = "mlx-community/whisper-large-v3-turbo"
+
+
+def _mlx_available() -> bool:
+    try:
+        import mlx_whisper  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+def whisper_segments(src: str, model: str = _DEFAULT_WHISPER_MODEL,
                      clean: bool = False) -> list:
     """Transcribe `src` and return whisper segments (each: {start, end, text, words}).
 
     Verbatim by default (keeps um/uh) — see the `transcribe` command for the rationale.
-    Shared by the transcribe and captions commands.
+    Shared by the transcribe and captions commands. Uses mlx-whisper on Apple Silicon and
+    falls back to faster-whisper (CPU/CUDA) everywhere else.
     """
-    import mlx_whisper
     verbatim_kwargs = {} if clean else dict(
         condition_on_previous_text=False,
         initial_prompt="Um, uh, er, hmm...",
     )
-    return mlx_whisper.transcribe(
-        src, path_or_hf_repo=model, word_timestamps=True, **verbatim_kwargs,
-    )["segments"]
+    if _mlx_available():
+        import mlx_whisper
+        return mlx_whisper.transcribe(
+            src, path_or_hf_repo=model, word_timestamps=True, **verbatim_kwargs,
+        )["segments"]
+
+    from faster_whisper import WhisperModel
+    fw_model = "large-v3-turbo" if model == _DEFAULT_WHISPER_MODEL else model
+    fw = WhisperModel(fw_model, device="auto", compute_type="int8")
+    segs, _ = fw.transcribe(src, word_timestamps=True, **verbatim_kwargs)
+    return [
+        {"start": s.start, "end": s.end, "text": s.text,
+         "words": [{"word": w.word, "start": w.start, "end": w.end} for w in (s.words or [])]}
+        for s in segs
+    ]
 
 
 def _srt_timestamp(t: float, sep: str = ",") -> str:
@@ -1043,26 +1094,54 @@ _VFX_BACKENDS = {"grok": grok_edit}
 # ---------------------------------------------------------------------------
 
 # Normalize every segment to a common geometry so concat never desyncs / errors.
-def _edl_vchain(W, H, fps, punch=None, nframes=None):
+def _edl_vchain(W, H, fps, punch=None, nframes=None, fit=None, focus=0.5, tag=0,
+                fade_in=0.0, fade_out=0.0, vfilter=None):
     """Video filter chain for one EDL segment.
 
+    `fit` decides how a source whose shape differs from W×H is placed on the canvas:
+      None/"pad"  scale-to-fit + black bars (default)
+      "cover"     scale-to-fill + crop; `focus` (0..1, or [x, y]) picks which part survives
+      "blur"      whole frame, centred, over a blurred enlargement of itself (no bars)
     `punch` is an optional (z_start, z_end) slow push (see `punch` in the EDL schema).
     The pre-scale to 2×  is what keeps zoompan smooth: zoompan rounds its crop origin to
     whole pixels, so pushing directly on a W×H frame visibly stair-steps.
+    `fade_in`/`fade_out` are dip-to-black fades in seconds, at the head/tail of the segment.
     """
-    chain = (f"setpts=PTS-STARTPTS,fps={fps},"
-             f"scale={W}:{H}:force_original_aspect_ratio=decrease,"
-             f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2,setsar=1")
+    head = f"setpts=PTS-STARTPTS,fps={fps}"
+    if vfilter:
+        head += f",{vfilter}"
+    if fit == "cover":
+        fx, fy = (focus, 0.5) if isinstance(focus, (int, float)) else focus
+        chain = (f"{head},scale={W}:{H}:force_original_aspect_ratio=increase,"
+                 f"crop={W}:{H}:(iw-{W})*{float(fx):.4f}:(ih-{H})*{float(fy):.4f},setsar=1")
+    elif fit == "blur":
+        bw, bh = max(2, W // 4), max(2, H // 4)
+        chain = (f"{head},split=2[bg{tag}][fg{tag}];"
+                 f"[bg{tag}]scale={bw}:{bh}:force_original_aspect_ratio=increase,"
+                 f"crop={bw}:{bh},boxblur=5:2,scale={W}:{H},"
+                 f"colorchannelmixer=rr=0.7:gg=0.7:bb=0.7[bgb{tag}];"
+                 f"[fg{tag}]scale={W}:{H}:force_original_aspect_ratio=decrease[fgs{tag}];"
+                 f"[bgb{tag}][fgs{tag}]overlay=(W-w)/2:(H-h)/2,setsar=1")
+    else:
+        chain = (f"{head},scale={W}:{H}:force_original_aspect_ratio=decrease,"
+                 f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2,setsar=1")
     if punch:
         z0, z1 = punch
         n = max(1, int(nframes or 1))
         chain += (f",scale={W*2}:{H*2},"
                   f"zoompan=z='{z0:.6f}+({z1:.6f}-{z0:.6f})*min(on/{n},1)':d=1:"
                   f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={W}x{H}:fps={fps}")
-    return chain + ",format=yuv420p"
+    chain += ",format=yuv420p"
+    dur = (nframes or 0) / fps
+    if fade_in and dur > 0:
+        chain += f",fade=t=in:st=0:d={min(float(fade_in), dur):.3f}"
+    if fade_out and dur > 0:
+        d = min(float(fade_out), dur)
+        chain += f",fade=t=out:st={dur - d:.3f}:d={d:.3f}"
+    return chain
 
 
-def _edl_achain(a_s, a_e, seam_fade, fade_in, fade_out):
+def _edl_achain(a_s, a_e, seam_fade, fade_in, fade_out, gain_db=0.0, afilter=None):
     """Audio filter chain for one EDL segment, with short fades at the internal seams.
 
     Butt-splicing two audio segments mid-waveform steps the signal discontinuously and
@@ -1076,8 +1155,115 @@ def _edl_achain(a_s, a_e, seam_fade, fade_in, fade_out):
             parts.append(f"afade=t=in:st=0:d={seam_fade:.4f}")
         if fade_out:
             parts.append(f"afade=t=out:st={dur - seam_fade:.4f}:d={seam_fade:.4f}")
+    if afilter:
+        parts.append(afilter)
+    if gain_db is not None and float(gain_db) <= -80:
+        parts.append("volume=0")
+    elif gain_db:
+        parts.append(f"volume={float(gain_db):.2f}dB")
     parts.append("aformat=channel_layouts=stereo:sample_rates=48000")
     return ",".join(parts)
+
+
+_FONT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "fonts")
+_FONT_FILES = {
+    "montserrat": "Montserrat[wght].ttf",
+    "playfair": "PlayfairDisplay[wght].ttf",
+    "playfair-italic": "PlayfairDisplay-Italic[wght].ttf",
+}
+
+
+def _load_font(name: str, size: int, weight: str = "Regular"):
+    from PIL import ImageFont
+    path = os.path.join(_FONT_DIR, _FONT_FILES.get(name, name))
+    try:
+        font = ImageFont.truetype(path, size)
+    except OSError:
+        return ImageFont.load_default(size=size)
+    try:
+        names = [n.decode() for n in font.get_variation_names()]
+        want = weight if weight in names else (f"{weight} Italic" if f"{weight} Italic" in names else None)
+        if want:
+            font.set_variation_by_name(want)
+    except Exception:
+        pass
+    return font
+
+
+def _tracked_width(font, text: str, tracking: float) -> float:
+    if not tracking:
+        return font.getlength(text)
+    return sum(font.getlength(ch) + tracking for ch in text) - tracking
+
+
+def _draw_tracked(draw, x: float, y: float, text: str, font, fill, tracking: float):
+    if not tracking:
+        draw.text((x, y), text, font=font, fill=fill)
+        return
+    for ch in text:
+        draw.text((x, y), ch, font=font, fill=fill)
+        x += font.getlength(ch) + tracking
+
+
+def _edl_text_png(spec: dict, W: int, H: int, path: str):
+    """Render one EDL `texts` entry to a full-frame RGBA PNG (soft drop shadow, no box).
+
+    spec: text (str, "\n" = line break), sub (optional second line), font/weight/size,
+    sub_font/sub_weight/sub_size, tracking/sub_tracking (letter spacing px), color,
+    align (center|left|right), x (px; default = centred / side margin), y (px, or a
+    fraction of H), shadow (0..1 opacity). Sizes are for the EDL's own canvas; the caller
+    rescales the PNG if the render is a draft.
+    """
+    from PIL import Image, ImageDraw, ImageFilter
+    size = int(spec.get("size", 96))
+    font = _load_font(spec.get("font", "montserrat"), size, spec.get("weight", "SemiBold"))
+    tracking = float(spec.get("tracking", 0))
+    color = spec.get("color", "#ffffff")
+    lines = [(ln, font, tracking, size) for ln in str(spec["text"]).split("\n")]
+    if spec.get("sub"):
+        ss = int(spec.get("sub_size", max(24, size // 3)))
+        sf = _load_font(spec.get("sub_font", "montserrat"), ss, spec.get("sub_weight", "Medium"))
+        lines.append((str(spec["sub"]), sf, float(spec.get("sub_tracking", tracking)), ss))
+    gap = float(spec.get("line_gap", 0.35))
+    widths = [_tracked_width(f, t, tr) for t, f, tr, _ in lines]
+    block_w = max(widths)
+    heights = [sz * (1 + gap) for *_, sz in lines]
+    block_h = sum(heights) - lines[-1][3] * gap
+
+    align = spec.get("align", "center")
+    margin = int(W * 0.08)
+    if "x" in spec:
+        bx = float(spec["x"])
+    elif align == "left":
+        bx = margin
+    elif align == "right":
+        bx = W - margin - block_w
+    else:
+        bx = (W - block_w) / 2
+    y = spec.get("y", 0.3)
+    by = float(y) * H if isinstance(y, float) and y <= 1.0 else float(y)
+
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    cy = by
+    for (t, f, tr, sz), w, h in zip(lines, widths, heights):
+        if align == "center" and "x" not in spec:
+            lx = bx + (block_w - w) / 2
+        elif align == "right" and "x" not in spec:
+            lx = bx + (block_w - w)
+        else:
+            lx = bx
+        _draw_tracked(d, lx, cy, t, f, color, tr)
+        cy += h
+    shadow = float(spec.get("shadow", 0.55))
+    if shadow > 0:
+        alpha = layer.split()[3]
+        blur = alpha.filter(ImageFilter.GaussianBlur(max(2, size * 0.05)))
+        sh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        sh.putalpha(blur.point(lambda v: min(255, int(v * shadow * 1.6))))
+        sh = Image.alpha_composite(sh, sh)
+        layer = Image.alpha_composite(sh, layer)
+    layer.save(path)
 
 
 def _edl_audio_windows(clips):
@@ -1154,7 +1340,7 @@ def _edl_check_cutaway(i, clip, fps):
             f"audio. A cutaway swaps the picture only — the two must match (fix vstart/vend).")
 
 
-def edl_render(edl_path: str, out: str, draft: bool = False):
+def edl_render(edl_path: str, out: str, draft: bool = False, seek: bool = False):
     """Execute an edit.json (Edit Decision List) → one re-encoded video.
 
     Schema (see the edl-edit skill):
@@ -1164,6 +1350,9 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
         "audio_fix": "loudnorm=I=-14:TP=-1.5:LRA=11",# optional filter chain on the speech bus
         "seam_fade": 0.015,                          # optional click-killing fade at each cut
         "vbitrate": "9M",                            # optional; raise for 4K/screencast text
+        "crf": 16, "preset": "slow", "maxrate": "20M",  # optional; libx264 quality mode (replaces vbitrate)
+        "texts": [{"text": "CARTAGENA", "sub": "Día 1", "start": 1.0, "end": 5.0,
+                   "font": "playfair", "size": 150, "y": 0.3}],  # optional titles, OUTPUT timeline
         "music": {"src": "bed.mp3", "gain_db": -18, "duck": true,
                   "start": 0.0, "fade_in": 0.5, "fade_out": 2.0},   # optional music bed
         "clips": [
@@ -1172,6 +1361,10 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
           # split edit — this clip's sound arrives 0.4s before its picture (J-cut):
           {"src": "b.mp4", "start": 12.0, "end": 20.0, "audio_lead": 0.4,
            "punch": [1.0, 1.06],                      # optional slow push over the clip
+           "fit": "blur", "focus": 0.5,               # optional: pad (default) | cover | blur
+           "gain_db": -20, "afilter": "highpass=f=150",  # optional per-clip sound level / filter
+           "vfilter": "eq=saturation=1.3",            # optional per-clip colour fix, before fit/scale
+           "vfade_in": 0.4, "vfade_out": 0.4,         # optional dip-to-black at head / tail
            "rationale": "answer starts under the end of the question"},
           # multicam cutaway — audio from src, picture from a second camera:
           {"src": "a.mp4", "start": 70.0, "end": 78.0,
@@ -1187,6 +1380,11 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
     Video and audio are concatenated as **two independent chains**, so `audio_lead` can move
     the sound edit off the picture edit (J/L cuts) without desyncing anything downstream.
     `draft` renders small and cheap for the internal verify loop — never as a deliverable.
+    `seek` opens each source with a fast input seek (-ss) near its first use instead of
+    decoding from t=0; only meaningful when every source is used once (the chunked renderer
+    renders one clip at a time). Optional EDL keys `acodec` (e.g. pcm_s16le, for lossless
+    intermediates) and `_seam_edges` ([fade_in, fade_out] seam fades for a lone clip) exist
+    for that renderer too.
     """
     edl = json.load(open(edl_path))
     clips = edl["clips"]
@@ -1211,6 +1409,18 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
     windows = _edl_audio_windows(clips)
     for i, c in enumerate(clips):
         _edl_check_cutaway(i, c, fps)
+
+    seek_off: dict[str, float] = {}
+    if seek:
+        for i, c in enumerate(clips):
+            a_s, a_e = windows[i]
+            v_s = float(c.get("vstart", c["start"]))
+            uses = [(c["src"], min(a_s, v_s))] if "vsrc" not in c else \
+                   [(c["src"], a_s), (c["vsrc"], v_s)]
+            for src, t in uses:
+                k = os.path.abspath(src)
+                seek_off[k] = min(seek_off.get(k, 1e9), max(0.0, t - 1.0))
+        seek_off = {k: round(v, 3) for k, v in seek_off.items()}
 
     # AV1 cannot be decoded by ffmpeg's trim filter on this platform — pre-transcode
     # any AV1 clip segments to temp H.264 files so the filter_complex works cleanly.
@@ -1261,6 +1471,8 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
         else:
             a_src, a_off = _resolve_av1(c["src"], min(a_s, v_s), max(a_e, v_e))
             v_src, v_off = a_src, a_off
+        v_off += seek_off.get(os.path.abspath(v_src), 0.0)
+        a_off += seek_off.get(os.path.abspath(a_src), 0.0)
         v_s, v_e = v_s - v_off, v_e - v_off
         a_s, a_e = a_s - a_off, a_e - a_off
         vi, ai = _idx(v_src), _idx(a_src)
@@ -1270,7 +1482,10 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
             punch = (1.0, float(punch)) if isinstance(punch, (int, float)) else \
                     (float(punch[0]), float(punch[1]))
         vchain = _edl_vchain(W, H, fps, punch=punch,
-                             nframes=round((v_e - v_s) * fps))
+                             nframes=round((v_e - v_s) * fps),
+                             fit=c.get("fit"), focus=c.get("focus", 0.5), tag=i,
+                             fade_in=c.get("vfade_in", 0.0), fade_out=c.get("vfade_out", 0.0),
+                             vfilter=c.get("vfilter"))
         # Nudge the out-point a quarter-frame inside: `trim` compares t < end in floating
         # point, so a frame sitting exactly on a quantized boundary is sometimes admitted
         # and sometimes not, leaving the picture a frame longer than the sound.
@@ -1279,15 +1494,18 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
         ap = os.path.abspath(a_src)
         if ap not in audio_cache:
             audio_cache[ap] = _has_audio(a_src)
+        edges = edl.get("_seam_edges") or [i > 0, i < n - 1]
         achain = _edl_achain(a_s, a_e, seam_fade,
-                             fade_in=i > 0, fade_out=i < n - 1)
+                             fade_in=edges[0], fade_out=edges[1],
+                             gain_db=c.get("gain_db", 0.0), afilter=c.get("afilter"))
         if audio_cache[ap]:
             parts.append(f"[{ai}:a]{achain}[a{i}]")
         else:  # silent source (e.g. a title card) → synthesize silence of the clip's length
             need_silence = True
             parts.append(f"[__SIL__:a]"
                          + _edl_achain(0.0, a_e - a_s, seam_fade,
-                                       fade_in=i > 0, fade_out=i < n - 1)
+                                       fade_in=edges[0], fade_out=edges[1],
+                                       gain_db=c.get("gain_db", 0.0))
                          + f"[a{i}]")
 
     # Two independent concat chains: `audio_lead` makes per-segment A and V lengths differ
@@ -1304,6 +1522,21 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
         else:
             graph += f";[vc0]lut3d={lut}[vc]"
         vmap = "[vc]"
+    texts = edl.get("texts") or []
+    text_pngs = []
+    for k, t in enumerate(texts):
+        s0, e0 = float(t["start"]), float(t["end"])
+        fd = min(float(t.get("fade", 0.5)), (e0 - s0) / 2)
+        png = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        png.close()
+        _edl_text_png(t, edl.get("width", 1920), edl.get("height", 1080), png.name)
+        text_pngs.append((png.name, s0, e0))
+        scale = f",scale={W}:{H}" if draft else ""
+        graph += (f";[__TXT{k}__:v]format=rgba{scale},"
+                  f"fade=t=in:st={s0:.3f}:d={fd:.3f}:alpha=1,"
+                  f"fade=t=out:st={e0 - fd:.3f}:d={fd:.3f}:alpha=1[tx{k}]"
+                  f";{vmap}[tx{k}]overlay=0:0:eof_action=pass,format=yuv420p[vt{k}]")
+        vmap = f"[vt{k}]"
     if edl.get("audio_fix"):
         graph += f";[ac0]{edl['audio_fix']}[acf]"; amap = "[acf]"
 
@@ -1335,6 +1568,9 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
     sil_idx = len(inputs)
     mus_idx = sil_idx + (1 if need_silence else 0)
     graph = graph.replace("__SIL__", str(sil_idx)).replace("__MUS__", str(mus_idx))
+    txt_base = mus_idx + (1 if music else 0)
+    for k in range(len(text_pngs)):
+        graph = graph.replace(f"__TXT{k}__", str(txt_base + k))
 
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
         f.write(graph + "\n")
@@ -1342,18 +1578,38 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
     try:
         cmd = ["ffmpeg", "-y"]
         for p in inputs:
+            if seek_off.get(p, 0.0) > 0:
+                cmd += ["-ss", f"{seek_off[p]:.3f}"]
             cmd += ["-i", p]
         if need_silence:
             cmd += ["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"]
         if music:
             # Loop the bed so a short track still covers the whole cut.
             cmd += ["-stream_loop", "-1", "-i", music["src"]]
-        cmd += ["-/filter_complex", gfile, "-map", vmap, "-map", amap,
-                "-c:v", VCODEC, "-b:v", vbitrate, "-c:a", "aac", "-b:a", "192k",
-                "-ar", "48000", "-movflags", "+faststart", out]
+        for png, s0, e0 in text_pngs:
+            cmd += ["-loop", "1", "-framerate", str(fps), "-itsoffset", f"{s0:.3f}",
+                    "-t", f"{e0 - s0:.3f}", "-i", png]
+        if VCODEC == "libx264" and "crf" in edl and not draft:
+            venc = ["-c:v", "libx264", "-preset", str(edl.get("preset", "slow")),
+                    "-crf", str(edl["crf"]), "-pix_fmt", "yuv420p",
+                    "-colorspace", "bt709", "-color_primaries", "bt709",
+                    "-color_trc", "bt709", "-color_range", "tv"]
+            if edl.get("maxrate"):
+                venc += ["-maxrate", str(edl["maxrate"]), "-bufsize", str(edl.get("bufsize", "40M"))]
+        else:
+            venc = ["-c:v", VCODEC, "-b:v", vbitrate]
+        acodec = edl.get("acodec")
+        aenc = ["-c:a", acodec] if acodec else ["-c:a", "aac", "-b:a", "192k"]
+        cmd += [_filter_script_flag(), gfile, "-map", vmap, "-map", amap,
+                *venc, *aenc, "-ar", "48000"]
+        if not out.lower().endswith(".mkv"):
+            cmd += ["-movflags", "+faststart"]
+        cmd += [out]
         _run(cmd)
     finally:
         os.unlink(gfile)
+        for png, _, _ in text_pngs:
+            os.unlink(png)
         if _av1_tmp_dir and os.path.isdir(_av1_tmp_dir):
             import shutil as _shutil
             _shutil.rmtree(_av1_tmp_dir, ignore_errors=True)
@@ -1366,6 +1622,82 @@ def edl_render(edl_path: str, out: str, draft: bool = False):
 # The mechanical tools above decide WHERE a cut can land. These decide WHEN it should,
 # which is what separates an edit that flows from one that's merely accurate.
 # ---------------------------------------------------------------------------
+
+def edl_render_chunked(edl_path: str, out: str, draft: bool = False, jobs: int = 2,
+                       work_dir: str | None = None, keep: bool = False):
+    """Render an EDL clip-by-clip, then assemble — for cut lists too big for one filtergraph.
+
+    One ffmpeg filtergraph over dozens of inputs reads every input in lockstep by *file*
+    time and buffers each not-yet-needed segment's frames, so memory grows with the number of
+    clips and the process gets OOM-killed. Here each clip renders alone (fast input seek,
+    near-lossless H.264 + PCM intermediates), the pieces are joined with the concat demuxer
+    (stream copy → frame- and sample-exact, no A/V drift), and ONE final pass applies the
+    grade, titles, music bed and the delivery encode to the assembled file.
+
+    Supports everything edl_render does except `audio_lead` (split edits cross clip
+    boundaries, which are independent here) and `vsrc` cutaways; both raise.
+    """
+    import shutil
+    from concurrent.futures import ThreadPoolExecutor
+
+    edl = json.load(open(edl_path))
+    clips = _edl_quantize(edl["clips"], edl.get("fps", 60))
+    for i, c in enumerate(clips):
+        if c.get("audio_lead") or "vsrc" in c:
+            raise ValueError(f"clip {i}: audio_lead/vsrc are not supported with --chunked")
+    fps = edl.get("fps", 60)
+    n = len(clips)
+    work = work_dir or tempfile.mkdtemp(prefix="edl_chunks_")
+    os.makedirs(work, exist_ok=True)
+    seam_fade = float(edl.get("seam_fade", 0.015))
+
+    def piece(i):
+        seg = os.path.join(work, f"seg_{i:04d}.mkv")
+        if os.path.exists(seg):
+            return seg
+        mini = {"fps": fps, "width": edl.get("width", 1920), "height": edl.get("height", 1080),
+                "seam_fade": seam_fade, "crf": 12, "preset": "veryfast",
+                "acodec": "pcm_s16le",
+                "_seam_edges": [i > 0, i < n - 1],
+                "clips": [clips[i]]}
+        mp = os.path.join(work, f"seg_{i:04d}.json")
+        json.dump(mini, open(mp, "w"))
+        tmp = seg + ".part.mkv"
+        edl_render(mp, tmp, draft=draft, seek=True)
+        os.replace(tmp, seg)
+        return seg
+
+    print(f"  [edl] chunked render: {n} clips, {jobs} parallel → {work}")
+    with ThreadPoolExecutor(jobs) as ex:
+        segs = []
+        for i, seg in enumerate(ex.map(piece, range(n)), 1):
+            segs.append(seg)
+            if i % 10 == 0 or i == n:
+                print(f"  [edl] pieces {i}/{n}", flush=True)
+
+    lst = os.path.join(work, "list.txt")
+    with open(lst, "w") as f:
+        for seg in segs:
+            f.write(f"file '{seg}'\n")
+    assembled = os.path.join(work, "assembled.mkv")
+    _run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst, "-c", "copy", assembled])
+
+    total = video_info(assembled)["duration"]
+    final = {"fps": fps, "width": edl.get("width", 1920), "height": edl.get("height", 1080),
+             "seam_fade": 0.0,
+             "clips": [{"src": assembled, "start": 0.0, "end": round(total * fps) / fps}]}
+    for k in ("grade", "audio_fix", "music", "texts", "crf", "preset", "maxrate", "bufsize",
+              "vbitrate"):
+        if k in edl:
+            final[k] = edl[k]
+    fp = os.path.join(work, "final.json")
+    json.dump(final, open(fp, "w"))
+    print("  [edl] final pass: titles + music + delivery encode", flush=True)
+    edl_render(fp, out, draft=draft)
+    if not keep and work_dir is None:
+        shutil.rmtree(work, ignore_errors=True)
+    return out
+
 
 def edl_report(edl_path: str) -> str:
     """Render an EDL's pacing as text — shot lengths, split edits, and rhythm warnings.
@@ -1501,7 +1833,7 @@ def beats(path: str, sr: int = 22050, hop: int = 512, n_fft: int = 1024,
     autocorrelating that envelope, and the beat grid is the best-fitting phase of that
     period, so beats stay on the pulse through passages with no drum hit.
 
-    Uses numpy + scipy, both already present via mlx-whisper — no new dependency.
+    Uses numpy + scipy, both declared in pyproject.toml — no new dependency.
     """
     import numpy as np
     from scipy.signal import find_peaks
@@ -1746,7 +2078,7 @@ def main():
     inf = sub.add_parser("info", help="print video metadata (fps, resolution, duration, frames, codec)")
     inf.add_argument("src")
 
-    tr = sub.add_parser("transcribe", help="transcribe audio with timestamps (mlx-whisper)")
+    tr = sub.add_parser("transcribe", help="transcribe audio with timestamps (mlx-whisper on Apple Silicon, else faster-whisper)")
     tr.add_argument("src")
     tr.add_argument("-o", "--out", default=None, help="output .txt file (default: print to stdout)")
     tr.add_argument("--words", action="store_true",
@@ -1882,6 +2214,11 @@ def main():
                     help="print the pacing report (shot lengths + rhythm warnings) first")
     el.add_argument("--dry-run", action="store_true",
                     help="with --report: show the pacing and exit without rendering")
+    el.add_argument("--chunked", action="store_true",
+                    help="render clip-by-clip then assemble (big cut lists; avoids OOM)")
+    el.add_argument("--jobs", type=int, default=2, help="parallel clip renders for --chunked")
+    el.add_argument("--work-dir", default=None,
+                    help="with --chunked: keep/reuse pieces here (resumable)")
 
     tg = sub.add_parser("tighten",
                         help="collapse dead air to a target beat → writes an edit.json")
@@ -1929,7 +2266,9 @@ def main():
         info = video_info(a.src)
         print(f"duration:   {info['duration']:.3f}s")
         print(f"fps:        {info['fps']}")
-        print(f"resolution: {info['width']}x{info['height']}")
+        orient = "vertical" if info["height"] > info["width"] else "horizontal"
+        rot = f"  (rotation tag {info['rotation']}°)" if info["rotation"] else ""
+        print(f"resolution: {info['width']}x{info['height']}  {orient}{rot}")
         print(f"frames:     {info['nframes']}")
         codec = info["codec"]
         suffix = "  ← ffmpeg cannot decode; trim/frame/detect use PyAV" if codec in _PYAV_DECODE_CODECS else ""
@@ -2059,7 +2398,10 @@ def main():
         if a.report or a.dry_run:
             print(edl_report(a.edit), end="")
         if not a.dry_run:
-            edl_render(a.edit, a.out, draft=a.draft)
+            if a.chunked:
+                edl_render_chunked(a.edit, a.out, draft=a.draft, jobs=a.jobs, work_dir=a.work_dir)
+            else:
+                edl_render(a.edit, a.out, draft=a.draft)
             print(a.out)
 
     elif a.cmd == "tighten":

@@ -55,6 +55,24 @@ sits where it does) — better decisions and an inspectable trail for the user.
   that stops an edit feeling choppy — see the `cutting-rhythm` skill for how much to use.
   Video and audio are concatenated as two independent chains, so a lead never desyncs.
 - `punch` is a slow zoom push (`1.06` or `[1.0, 1.06]`) — life for an otherwise static shot.
+- `fit` (per clip) places a source whose shape differs from the canvas: `pad` (black bars,
+  default), `cover` (fill + crop; `focus` 0..1 or `[x, y]` picks what survives), `blur` (whole
+  frame over a blurred enlargement of itself — the right call for a landscape clip in a
+  vertical edit).
+- `gain_db` / `afilter` (per clip) set that clip's sound level (`-120` = mute) or run a raw
+  ffmpeg audio chain on it (wind: `highpass=f=150`). Because the music ducks on the clip
+  audio, quiet ambience under music never triggers a duck; set `gain_db: 0` on clips whose
+  speech should win.
+- `vfilter` (per clip) is a raw ffmpeg video chain applied to that clip before fit/scale — use
+  it to colour-correct one source that doesn't match the rest (e.g. a washed-out phone clip:
+  `eq=contrast=1.12:saturation=1.35:gamma=0.92,curves=all='0/0 0.2/0.15 0.5/0.5 0.8/0.84 1/1'`).
+- `vfade_in` / `vfade_out` (per clip, seconds) dip to black at the clip's head/tail.
+- `texts` (top-level) burns titles in the same pass, timed on the **output** timeline:
+  `{text, sub, start, end, font: montserrat|playfair|playfair-italic, weight, size, tracking,
+  align, x, y (px or fraction of H), color, shadow, fade}` — rendered with PIL (soft shadow, no
+  box) from `assets/fonts/`. Mind Instagram's UI zones (top ~13%, bottom ~20% of a 9:16 frame).
+- `crf` / `preset` / `maxrate` (top-level, libx264 only) switch the encode from a flat bitrate
+  to quality mode — use it for the final delivery.
 - `music` mixes the bed **in the same render pass** (looped to cover, ducked under speech by
   default), so a montage doesn't need a second re-encode. `audio_fix` runs on the speech
   before the mix, so ducking triggers on normalized dialogue.
