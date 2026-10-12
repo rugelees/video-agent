@@ -93,9 +93,6 @@ shot("d:0930_212101", 108.0, 4, "Yellow cab crossing, city life")
 shot("d:0930_195948", 3.0, 8, "Beach at dusk: tonal shift from city to sea")
 shot("d:0930_200105", 13.0, 8, "Waves and skyline under the pink sky")
 shot("d:0930_200714", 4.5, 4, "Friend washing his hair: small human moment")
-shot("d:0930_202429", 82.0, 4, "Funny faces to camera: the friends' humour")
-shot("d:0930_202429", 56.0, 8, "Floating on his back, the pause after the walk")
-shot("d:0930_202429", 3.0, 4, "Selfie in the water at dusk, last beat of the section")
 
 # ================================================================ B · Feels — the islands
 section("feels", 4.0)

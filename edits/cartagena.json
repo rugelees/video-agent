@@ -16,8 +16,8 @@
  },
  "texts": [
   {
-   "start": 277.708,
-   "end": 286.708,
+   "start": 268.5,
+   "end": 277.5,
    "fade": 1.2,
    "text": "Gracias, Cartagena",
    "sub": "y por muchos viajes más",
@@ -132,27 +132,6 @@
    "end": 6.833333,
    "rationale": "Friend washing his hair: small human moment",
    "gain_db": -16.7
-  },
-  {
-   "src": "inputs/norm/dji_export_20260930_202429_0.f_compose_0.mp4",
-   "start": 82.0,
-   "end": 84.291667,
-   "rationale": "Funny faces to camera: the friends' humour",
-   "gain_db": -16.0
-  },
-  {
-   "src": "inputs/norm/dji_export_20260930_202429_0.f_compose_0.mp4",
-   "start": 56.0,
-   "end": 60.625,
-   "rationale": "Floating on his back, the pause after the walk",
-   "gain_db": -16.0
-  },
-  {
-   "src": "inputs/norm/dji_export_20260930_202429_0.f_compose_0.mp4",
-   "start": 3.0,
-   "end": 5.291667,
-   "rationale": "Selfie in the water at dusk, last beat of the section",
-   "gain_db": -16.0
   },
   {
    "src": "inputs/norm/IMG_7398.mp4",
