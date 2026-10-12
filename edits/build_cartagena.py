@@ -79,13 +79,13 @@ def photo(name, dur, why, **kw):
 chapter("prologue", "one_dance", 0.0)
 shot("d:0930_200312", 28.0, 38.0, "Opening image: calm pink sunset over the water, longest shot so the piece starts slow",
      amb=-34)
-text("title", "CARTAGENA", "30 SEP – 4 OCT · 2026", off=1.2, dur=6.0)
+text("title", "CARTAGENA", None, off=1.2, dur=6.0)
 shot("d:1001_185654", 175.5, 180.0, "Teaser: the fish — the highlight of the trip, shown for a beat")
 shot("d:1002_090317", 2.0, 6.5, "Teaser: boat wake past the mangroves, motion and sea")
 shot("d:0930_212101", 61.0, 65.5, "Teaser: colonial street with flags, the city", vout=0.7)
 
 # ---------------------------------------------------------------- DÍA 1 — LLEGADA
-chapter("llegada", "one_dance", 0.0, "Llegada", "30 de septiembre")
+chapter("llegada", "one_dance", 0.0, "Llegada")
 shot("d:0930_211042", 0.0, 5.5, "Pool from the water: arrival, settling in", vin=0.7)
 shot("d:0930_211042", 16.0, 21.5, "Friend swimming in the pool, personality beat")
 shot("d:0930_211400", 10.0, 16.0, "Walking a colourful street, first look at the old town")
@@ -117,7 +117,7 @@ shot("d:0930_205359", 27.0, 33.0, "Friend wading in the foam, sky turning grey-p
 shot("d:0930_205359", 46.0, 53.0, "Silhouettes in the dark water, last light of day one", vout=0.8)
 
 # ---------------------------------------------------------------- DÍA 2 — ISLAS DEL ROSARIO
-chapter("islas", "feels", 0.0, "Islas del Rosario", "1 de octubre")
+chapter("islas", "feels", 0.0, "Islas del Rosario")
 shot("i:7398", 0.0, 5.5, "Dock in the morning: the day starts, boats waiting", vin=0.7)
 shot("i:7399", 1.0, 6.0, "Shade at the dock, skyline behind")
 shot("d:1002_090650", 0.0, 5.5, "Selfie on the boat with sunglasses")
@@ -175,7 +175,7 @@ shot("d:1002_090751", 6.0, 18.0, "Heading back: city skyline from the boat", amb
 shot("d:1002_090957", 3.0, 8.0, "Last look at the skyline", vout=0.9)
 
 # ---------------------------------------------------------------- NOCHE
-chapter("noche", "no_idea", 38.0, "Noches en la ciudad", "2 de octubre")
+chapter("noche", "no_idea", 38.0, "Noches en la ciudad")
 photo("plaza1", 4.5, "Old town building lit at night", vin=0.7)
 photo("plaza2", 4.0, "Plaza at night with blue lights")
 photo("wall1", 4.0, "City wall at night, leading lines")
@@ -187,7 +187,7 @@ photo("bar3", 3.5, "Peace signs, the night out")
 shot("o:DF7CF623-C32F-499F-A692-0FDB01D74684", 0.0, 9.7, "Short party clip in red light", amb=-34, vout=0.8)
 
 # ---------------------------------------------------------------- ÚLTIMOS DÍAS
-chapter("final", "lost", 0.0, "Últimos atardeceres", "3 y 4 de octubre")
+chapter("final", "lost", 0.0, "Últimos atardeceres")
 shot("i:7631", 0.0, 6.5, "Driving along the coast, leaving the old town", vin=0.7)
 shot("i:7637", 1.0, 6.5, "Rocks and a bird by the sea")
 shot("i:7638", 0.0, 5.0, "Grey beach, calm")
@@ -260,7 +260,7 @@ def build():
                         tracking=10, sub_font="montserrat", sub_weight="Medium", sub_size=40,
                         sub_tracking=8, align="center", y=0.31, line_gap=0.45)
         elif tx["kind"] == "chapter":
-            base.update(text=tx["text"], sub=tx["sub"].upper(), font="playfair-italic",
+            base.update(text=tx["text"], sub=(tx["sub"] or "").upper() or None, font="playfair-italic",
                         weight="Medium", size=108, tracking=0, sub_font="montserrat",
                         sub_weight="SemiBold", sub_size=36, sub_tracking=7, align="left",
                         y=0.66, line_gap=0.4)

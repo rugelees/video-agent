@@ -67,3 +67,4 @@ beats.txt
 # remotion (optional graphics) build artifacts
 node_modules/
 remotion/out/
+edits/bed.wav
