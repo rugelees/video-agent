@@ -7,6 +7,7 @@ with the displayed orientation baked in (portrait -> 1080x1920, landscape -> 192
 - HLG HDR (iPhone) is tone-mapped to SDR so it matches the already-graded action-cam clips
 - 25 / 24.9 fps sources are conformed to 24 by a ~4% slowdown (no dropped frames, no hitch);
   other rates (30/60) are blended down with the `framerate` filter
+- --vcrop SUBSTR=FOCUS re-crops matching landscape clips to a true 9:16 (from full-res source)
 - resumable: finished outputs are skipped
 
 Usage: uv run python scripts/normalize_footage.py inputs/cartagena -o inputs/norm [-j 2]
@@ -45,11 +46,16 @@ def _has_audio(path: str) -> bool:
     return "audio" in out
 
 
-def build_cmd(src: str, dst: str, threads: int, crf: int, preset: str) -> list[str]:
+def build_cmd(src: str, dst: str, threads: int, crf: int, preset: str,
+              vcrop: float | None = None) -> list[str]:
     info = va.video_info(src)
     w, h = (1080, 1920) if info["height"] > info["width"] else (1920, 1080)
     fps = info["fps"]
-    vf = [f"scale={w}:{h}:flags=lanczos"]
+    vf = []
+    if vcrop is not None:
+        w, h = 1080, 1920
+        vf.append(f"crop=trunc(ih*9/16/2)*2:ih:trunc((iw-trunc(ih*9/16/2)*2)*{vcrop}/2)*2:0")
+    vf.append(f"scale={w}:{h}:flags=lanczos")
     if _color_transfer(src) in ("arib-std-b67", "smpte2084"):
         vf.append(TONEMAP_HLG)
     af = ["aresample=48000"]
@@ -74,13 +80,13 @@ def build_cmd(src: str, dst: str, threads: int, crf: int, preset: str) -> list[s
 
 
 def run_one(args):
-    src, out_dir, threads, crf, preset = args
-    stem = os.path.splitext(os.path.basename(src))[0]
+    src, out_dir, threads, crf, preset, vcrop = args
+    stem = os.path.splitext(os.path.basename(src))[0] + ("_v" if vcrop is not None else "")
     dst = os.path.join(out_dir, stem + ".mp4")
     if os.path.exists(dst):
         return f"skip  {stem}"
     tmp = dst + ".part.mp4"
-    p = subprocess.run(build_cmd(src, tmp, threads, crf, preset), capture_output=True, text=True)
+    p = subprocess.run(build_cmd(src, tmp, threads, crf, preset, vcrop), capture_output=True, text=True)
     if p.returncode != 0:
         return f"FAIL  {stem}: {p.stderr.strip()[-300:]}"
     os.replace(tmp, dst)
@@ -96,11 +102,18 @@ def main():
     ap.add_argument("--crf", type=int, default=14)
     ap.add_argument("--preset", default="fast")
     ap.add_argument("--only", default=None, help="substring filter on file name")
+    ap.add_argument("--vcrop", action="append", default=[], metavar="SUBSTR=FOCUS",
+                    help="also write a 9:16 center-cropped '<name>_v.mp4' of matching landscape "
+                         "files; FOCUS 0..1 slides the crop window left->right (repeatable)")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     files = sorted(f for f in glob.glob(os.path.join(a.src, "*"))
                    if f.lower().endswith(VIDEO_EXTS) and (not a.only or a.only in f))
-    jobs = [(f, a.out, a.threads, a.crf, a.preset) for f in files]
+    jobs = [(f, a.out, a.threads, a.crf, a.preset, None) for f in files]
+    for spec in a.vcrop:
+        key, _, focus = spec.partition("=")
+        jobs += [(f, a.out, a.threads, a.crf, a.preset, float(focus or 0.5))
+                 for f in files if key in f]
     with ThreadPoolExecutor(a.jobs) as ex:
         for i, msg in enumerate(ex.map(run_one, jobs), 1):
             print(f"[{i}/{len(jobs)}] {msg}", flush=True)

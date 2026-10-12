@@ -162,6 +162,15 @@ uv run video-agent edl edit.json -o draft.mp4 --draft       # fast 480p, verific
 #   that window as its own segment file (trim+overlay, split points on silence boundaries so
 #   seam_fade can't notch a word) and list it as an extra clip — see edit_video_agent.json.
 #   VERIFY by re-transcribing the output: transcribe out.mp4 --clean.
+#   Long edits (50+ clips) / mixed sources: add `--chunked --jobs 2 [--work-dir DIR]` — renders
+#   each clip alone (input-seek), joins by stream copy, then one final pass for grade/music/
+#   texts. A monolithic filtergraph buffers every future segment and OOMs; chunked is resumable
+#   but rejects audio_lead/vsrc. Extra per-clip keys: fit (pad|cover|blur) + focus, gain_db,
+#   afilter, vfade_in/vfade_out; top-level: texts (PIL-rendered titles, fade, tracking),
+#   crf/preset/maxrate/bufsize (libx264 quality mode). Normalize mixed footage first with
+#   `uv run python scripts/normalize_footage.py SRC -o inputs/norm [--vcrop SUBSTR=FOCUS]`
+#   (1080p/24fps/SDR; HLG iPhone tone-mapped; --vcrop re-crops landscape to a true 9:16).
+#   Other helpers: scripts/contact_sheet.py (review sheets), scripts/photo_clips.py (stills).
 
 # tighten — collapse dead air to a natural beat → writes an edit.json (not a video)
 uv run video-agent tighten talk.mp4 -o edit.json --target-gap 0.5 --min-gap 1.0

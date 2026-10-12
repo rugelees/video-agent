@@ -52,8 +52,8 @@
    "line_gap": 0.4
   },
   {
-   "start": 148.792,
-   "end": 153.0,
+   "start": 188.792,
+   "end": 193.0,
    "fade": 0.7,
    "text": "Islas del Rosario",
    "sub": "1 DE OCTUBRE",
@@ -70,8 +70,8 @@
    "line_gap": 0.4
   },
   {
-   "start": 278.792,
-   "end": 282.292,
+   "start": 324.792,
+   "end": 328.292,
    "fade": 0.7,
    "text": "Con los peces",
    "font": "playfair-italic",
@@ -81,8 +81,8 @@
    "y": 0.7
   },
   {
-   "start": 441.292,
-   "end": 445.5,
+   "start": 517.292,
+   "end": 521.5,
    "fade": 0.7,
    "text": "Noches en la ciudad",
    "sub": "2 DE OCTUBRE",
@@ -99,8 +99,8 @@
    "line_gap": 0.4
   },
   {
-   "start": 485.0,
-   "end": 489.208,
+   "start": 561.0,
+   "end": 565.208,
    "fade": 0.7,
    "text": "Últimos atardeceres",
    "sub": "3 Y 4 DE OCTUBRE",
@@ -117,8 +117,8 @@
    "line_gap": 0.4
   },
   {
-   "start": 550.208,
-   "end": 559.208,
+   "start": 644.708,
+   "end": 653.708,
    "fade": 1.2,
    "text": "Gracias, Cartagena",
    "sub": "y por muchos viajes más",
@@ -319,10 +319,59 @@
    "gain_db": -16.0
   },
   {
-   "src": "inputs/norm/dji_export_20260930_205359_0.f_compose_0.mp4",
+   "src": "inputs/norm/dji_export_20260930_202429_0.f_compose_0.mp4",
+   "start": 56.0,
+   "end": 62.0,
+   "rationale": "Floating on his back, the pause after the walk",
+   "gain_db": -16.0
+  },
+  {
+   "src": "inputs/norm/dji_export_20260930_202429_0.f_compose_0.mp4",
+   "start": 82.0,
+   "end": 88.5,
+   "rationale": "Funny faces to camera: the friends' humour",
+   "gain_db": -16.0
+  },
+  {
+   "src": "inputs/norm/dji_export_20260930_202429_0.f_compose_0.mp4",
+   "start": 127.0,
+   "end": 132.0,
+   "rationale": "Profile selfie, skyline behind",
+   "gain_db": -16.0
+  },
+  {
+   "src": "inputs/norm/dji_export_20260930_202429_0.f_compose_0.mp4",
+   "start": 186.0,
+   "end": 191.0,
+   "rationale": "Swimming out, hotel towers across the bay",
+   "gain_db": -16.0
+  },
+  {
+   "src": "inputs/norm/dji_export_20260930_202429_0.f_compose_0.mp4",
+   "start": 212.0,
+   "end": 217.5,
+   "rationale": "Friend surfaces next to the camera",
+   "gain_db": -16.0
+  },
+  {
+   "src": "inputs/norm/dji_export_20260930_200105_0.f_compose_0.mp4",
    "start": 28.0,
-   "end": 35.0,
-   "rationale": "Beach getting dark, last light of day one",
+   "end": 34.0,
+   "rationale": "More of the bay at dusk, camera low on the water",
+   "gain_db": -13.7
+  },
+  {
+   "src": "inputs/norm/dji_export_20260930_205359_0.f_compose_0.mp4",
+   "start": 27.0,
+   "end": 33.0,
+   "rationale": "Friend wading in the foam, sky turning grey-pink",
+   "gain_db": -14.5
+  },
+  {
+   "src": "inputs/norm/dji_export_20260930_205359_0.f_compose_0.mp4",
+   "start": 46.0,
+   "end": 53.0,
+   "rationale": "Silhouettes in the dark water, last light of day one",
    "vfade_out": 0.8,
    "gain_db": -14.5
   },
@@ -416,6 +465,13 @@
    "start": 14.0,
    "end": 21.0,
    "rationale": "Friend with sunglasses waves from the chair",
+   "gain_db": -15.4
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_083948_0.f_compose_0.mp4",
+   "start": 30.0,
+   "end": 36.0,
+   "rationale": "Beach-side moment, still relaxed",
    "gain_db": -15.4
   },
   {
@@ -544,12 +600,10 @@
    "gain_db": -18.9
   },
   {
-   "src": "inputs/norm/dji_export_20261002_084333_0.f_compose_0.mp4",
+   "src": "inputs/norm/dji_export_20261002_084333_0.f_compose_0_v.mp4",
    "start": 3.0,
    "end": 9.5,
-   "rationale": "Landscape clip (real orientation): coral — blur fill",
-   "fit": "blur",
-   "gain_db": -19.3
+   "rationale": "Landscape original re-cropped to 9:16 (centre): coral heads"
   },
   {
    "src": "inputs/norm/dji_export_20261001_190320_0.f_compose_0.mp4",
@@ -580,12 +634,10 @@
    "gain_db": -18.8
   },
   {
-   "src": "inputs/norm/dji_export_20261002_084515_0.f_compose_0.mp4",
-   "start": 17.0,
-   "end": 24.0,
-   "rationale": "Landscape clip: reef wall — blur fill",
-   "fit": "blur",
-   "gain_db": -19.0
+   "src": "inputs/norm/dji_export_20261002_084515_0.f_compose_0_v.mp4",
+   "start": 11.0,
+   "end": 18.0,
+   "rationale": "Landscape original re-cropped to 9:16: legs over the seabed, then swimmers"
   },
   {
    "src": "inputs/norm/dji_export_20261002_084702_0.f_compose_0.mp4",
@@ -593,6 +645,27 @@
    "end": 9.0,
    "rationale": "Colourful fish over the rocks",
    "gain_db": -17.3
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_084833_0.f_compose_0.mp4",
+   "start": 2.0,
+   "end": 8.5,
+   "rationale": "Parrotfish and small fish over the rocks",
+   "gain_db": -18.8
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_084833_0.f_compose_0.mp4",
+   "start": 26.0,
+   "end": 31.5,
+   "rationale": "Big striped sergeant fish passes",
+   "gain_db": -18.8
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_084948_0.f_compose_0.mp4",
+   "start": 14.0,
+   "end": 20.0,
+   "rationale": "Cave full of yellow fish, light from above",
+   "gain_db": -18.9
   },
   {
    "src": "inputs/norm/dji_export_20261001_190320_0.f_compose_0.mp4",
@@ -637,12 +710,24 @@
    "gain_db": -18.9
   },
   {
-   "src": "inputs/norm/dji_export_20261002_085958_0.f_compose_0.mp4",
+   "src": "inputs/norm/dji_export_20261001_190320_0.f_compose_0.mp4",
+   "start": 342.0,
+   "end": 349.0,
+   "rationale": "Last big gathering of fish, a swimmer drifting by",
+   "gain_db": -18.9
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_084833_0.f_compose_0.mp4",
+   "start": 20.0,
+   "end": 25.0,
+   "rationale": "Snorkeler selfie with a smile under the surface",
+   "gain_db": -20.8
+  },
+  {
+   "src": "inputs/norm/dji_export_20261002_085958_0.f_compose_0_v.mp4",
    "start": 0.5,
    "end": 9.5,
-   "rationale": "Landscape clip: surface with the stilt house and fish — calm exit, blur fill",
-   "fit": "blur",
-   "gain_db": -12.4
+   "rationale": "Landscape original re-cropped to 9:16 (right-leaning): surface, stilt house and fish — calm exit"
   },
   {
    "src": "inputs/norm/dji_export_20261002_090751_0.f_compose_0.mp4",
@@ -782,10 +867,17 @@
    "gain_db": 1.4
   },
   {
+   "src": "inputs/norm/1791067540104.mp4",
+   "start": 1.0,
+   "end": 7.0,
+   "rationale": "Lifeguard hut on the sand: quiet establishing shot",
+   "gain_db": -10.7
+  },
+  {
    "src": "inputs/norm/1791067611605.mp4",
-   "start": 2.0,
-   "end": 10.0,
-   "rationale": "Dusk on the beach, waves",
+   "start": 20.0,
+   "end": 27.0,
+   "rationale": "Dusk on the beach, rocks and waves",
    "gain_db": -4.7
   },
   {
@@ -814,6 +906,20 @@
    "start": 50.0,
    "end": 57.0,
    "rationale": "Friends coming out of the sea",
+   "gain_db": -9.2
+  },
+  {
+   "src": "inputs/norm/1791119255902.mp4",
+   "start": 8.0,
+   "end": 15.0,
+   "rationale": "Friends in the surf in the blue hour",
+   "gain_db": -8.3
+  },
+  {
+   "src": "inputs/norm/1791119333104.mp4",
+   "start": 52.0,
+   "end": 58.5,
+   "rationale": "Two friends walking out of the waves",
    "gain_db": -9.2
   },
   {
