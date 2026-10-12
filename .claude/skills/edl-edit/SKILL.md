@@ -63,6 +63,9 @@ sits where it does) — better decisions and an inspectable trail for the user.
   ffmpeg audio chain on it (wind: `highpass=f=150`). Because the music ducks on the clip
   audio, quiet ambience under music never triggers a duck; set `gain_db: 0` on clips whose
   speech should win.
+- `vfilter` (per clip) is a raw ffmpeg video chain applied to that clip before fit/scale — use
+  it to colour-correct one source that doesn't match the rest (e.g. a washed-out phone clip:
+  `eq=contrast=1.12:saturation=1.35:gamma=0.92,curves=all='0/0 0.2/0.15 0.5/0.5 0.8/0.84 1/1'`).
 - `vfade_in` / `vfade_out` (per clip, seconds) dip to black at the clip's head/tail.
 - `texts` (top-level) burns titles in the same pass, timed on the **output** timeline:
   `{text, sub, start, end, font: montserrat|playfair|playfair-italic, weight, size, tracking,

@@ -1095,7 +1095,7 @@ _VFX_BACKENDS = {"grok": grok_edit}
 
 # Normalize every segment to a common geometry so concat never desyncs / errors.
 def _edl_vchain(W, H, fps, punch=None, nframes=None, fit=None, focus=0.5, tag=0,
-                fade_in=0.0, fade_out=0.0):
+                fade_in=0.0, fade_out=0.0, vfilter=None):
     """Video filter chain for one EDL segment.
 
     `fit` decides how a source whose shape differs from W×H is placed on the canvas:
@@ -1108,6 +1108,8 @@ def _edl_vchain(W, H, fps, punch=None, nframes=None, fit=None, focus=0.5, tag=0,
     `fade_in`/`fade_out` are dip-to-black fades in seconds, at the head/tail of the segment.
     """
     head = f"setpts=PTS-STARTPTS,fps={fps}"
+    if vfilter:
+        head += f",{vfilter}"
     if fit == "cover":
         fx, fy = (focus, 0.5) if isinstance(focus, (int, float)) else focus
         chain = (f"{head},scale={W}:{H}:force_original_aspect_ratio=increase,"
@@ -1361,6 +1363,7 @@ def edl_render(edl_path: str, out: str, draft: bool = False, seek: bool = False)
            "punch": [1.0, 1.06],                      # optional slow push over the clip
            "fit": "blur", "focus": 0.5,               # optional: pad (default) | cover | blur
            "gain_db": -20, "afilter": "highpass=f=150",  # optional per-clip sound level / filter
+           "vfilter": "eq=saturation=1.3",            # optional per-clip colour fix, before fit/scale
            "vfade_in": 0.4, "vfade_out": 0.4,         # optional dip-to-black at head / tail
            "rationale": "answer starts under the end of the question"},
           # multicam cutaway — audio from src, picture from a second camera:
@@ -1481,7 +1484,8 @@ def edl_render(edl_path: str, out: str, draft: bool = False, seek: bool = False)
         vchain = _edl_vchain(W, H, fps, punch=punch,
                              nframes=round((v_e - v_s) * fps),
                              fit=c.get("fit"), focus=c.get("focus", 0.5), tag=i,
-                             fade_in=c.get("vfade_in", 0.0), fade_out=c.get("vfade_out", 0.0))
+                             fade_in=c.get("vfade_in", 0.0), fade_out=c.get("vfade_out", 0.0),
+                             vfilter=c.get("vfilter"))
         # Nudge the out-point a quarter-frame inside: `trim` compares t < end in floating
         # point, so a frame sitting exactly on a quantized boundary is sometimes admitted
         # and sometimes not, leaving the picture a frame longer than the sound.

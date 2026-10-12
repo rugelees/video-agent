@@ -166,7 +166,7 @@ uv run video-agent edl edit.json -o draft.mp4 --draft       # fast 480p, verific
 #   each clip alone (input-seek), joins by stream copy, then one final pass for grade/music/
 #   texts. A monolithic filtergraph buffers every future segment and OOMs; chunked is resumable
 #   but rejects audio_lead/vsrc. Extra per-clip keys: fit (pad|cover|blur) + focus, gain_db,
-#   afilter, vfade_in/vfade_out; top-level: texts (PIL-rendered titles, fade, tracking),
+#   afilter, vfilter (per-clip colour fix), vfade_in/vfade_out; top-level: texts (PIL-rendered titles, fade, tracking),
 #   crf/preset/maxrate/bufsize (libx264 quality mode). Normalize mixed footage first with
 #   `uv run python scripts/normalize_footage.py SRC -o inputs/norm [--vcrop SUBSTR=FOCUS]`
 #   (1080p/24fps/SDR; HLG iPhone tone-mapped; --vcrop re-crops landscape to a true 9:16).
